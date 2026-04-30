@@ -14,6 +14,7 @@ from app.db.qdrant import init_qdrant_collection, close_qdrant_clients
 from app.db.postgres import init_db, close_db
 from app.db.redis_cache import close_redis
 from app.api.routes.ingest import router as ingest_router
+from app.api.routes.query import router as query_router
 
 setup_logging()
 logger = structlog.get_logger(__name__)
@@ -53,6 +54,7 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 
 # Routers
 app.include_router(ingest_router)
+app.include_router(query_router)
 
 
 @app.get("/health", tags=["system"])
