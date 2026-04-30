@@ -1,0 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    background: #0a0b0e;
+    color: #e8eaf0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar       { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #3d4d6b; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #0099bb; }
+
+  ::selection { background: rgba(0,212,255,0.15); color: #00d4ff; }
+}
+
+@layer components {
+  /* Streaming cursor */
+  .streaming-cursor::after {
+    content: "▋";
+    color: #00d4ff;
+    animation: blink 0.8s step-end infinite;
+    margin-left: 1px;
+  }
+
+  /* Intent badges */
+  .badge-content       { @apply bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/25; }
+  .badge-summarization { @apply bg-accent-green/10 text-accent-green border border-accent-green/25; }
+  .badge-comparison    { @apply bg-accent-amber/10 text-accent-amber border border-accent-amber/25; }
+  .badge-metadata      { @apply bg-accent-red/10 text-accent-red border border-accent-red/25; }
+
+  /* Prose inside assistant messages */
+  .prose-dark p         { @apply mb-3 leading-7 text-text-primary last:mb-0; }
+  .prose-dark strong    { @apply text-accent-cyan font-semibold; }
+  .prose-dark code      { @apply font-mono text-xs bg-bg-elevated border border-border-default rounded-sm px-1.5 py-0.5 text-accent-green; }
+}
