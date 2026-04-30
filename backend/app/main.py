@@ -17,6 +17,7 @@ from app.api.routes.ingest import router as ingest_router
 from app.api.routes.query import router as query_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.evaluation import router as evaluation_router
 
 setup_logging()
 logger = structlog.get_logger(__name__)
@@ -59,6 +60,7 @@ app.include_router(ingest_router)
 app.include_router(query_router)
 app.include_router(chat_router)
 app.include_router(documents_router)
+app.include_router(evaluation_router)
 
 
 @app.get("/health", tags=["system"])
