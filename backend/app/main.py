@@ -15,6 +15,8 @@ from app.db.postgres import init_db, close_db
 from app.db.redis_cache import close_redis
 from app.api.routes.ingest import router as ingest_router
 from app.api.routes.query import router as query_router
+from app.api.routes.chat import router as chat_router
+from app.api.routes.documents import router as documents_router
 
 setup_logging()
 logger = structlog.get_logger(__name__)
@@ -55,6 +57,8 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 # Routers
 app.include_router(ingest_router)
 app.include_router(query_router)
+app.include_router(chat_router)
+app.include_router(documents_router)
 
 
 @app.get("/health", tags=["system"])
