@@ -48,7 +48,14 @@ async def run_query_pipeline(raw_query: str) -> dict:
     candidates = fused_chunks[:20]
 
     # Step 7: Rerank → top-5
-    final_chunks = rerank(rewritten, candidates)
+    # For summarization/comparison, cross-encoder scores poorly on abstract queries.
+    # Use RRF-ranked chunks directly — they already represent the best coverage.
+    if intent in ("summarization", "comparison"):
+        final_chunks = candidates[:5]
+        for chunk in final_chunks:
+            chunk.setdefault("rerank_score", chunk.get("rrf_score", 0.1))
+    else:
+        final_chunks = rerank(rewritten, candidates)
 
     # Determine if this is a multi-doc query
     source_files = {c["source_file"] for c in final_chunks if c.get("source_file")}

@@ -9,14 +9,21 @@ _FALLBACK_RESPONSE = (
 )
 
 
-def has_sufficient_context(chunks: list[dict], threshold: float = 0.05) -> bool:
+def has_sufficient_context(
+    chunks: list[dict],
+    threshold: float = 0.05,
+    intent: str = "content",
+) -> bool:
     """
-    Returns True if at least one chunk has a rerank score above threshold.
-    The reranker score is more reliable than the embedding similarity score
-    because it uses a cross-encoder that sees query+document together.
+    Returns True if there is sufficient context to generate an answer.
+    Summarization and comparison intents bypass the threshold check —
+    if chunks exist, we always attempt generation since the cross-encoder
+    scores poorly on abstract queries by design.
     """
     if not chunks:
         return False
+    if intent in ("summarization", "comparison"):
+        return True
     return any(c.get("rerank_score", 0.0) >= threshold for c in chunks)
 
 

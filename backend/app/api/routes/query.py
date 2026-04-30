@@ -76,7 +76,7 @@ async def query_stream(request: QueryRequest):
 
     async def event_stream():
         # Safety check — no relevant chunks found
-        if not has_sufficient_context(chunks):
+        if not has_sufficient_context(chunks, intent=intent):
             async for event in stream_fallback():
                 yield event
             return
