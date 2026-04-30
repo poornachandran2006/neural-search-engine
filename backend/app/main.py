@@ -10,6 +10,10 @@ from app.core.exceptions import (
     neural_search_exception_handler,
     unhandled_exception_handler,
 )
+from app.db.qdrant import init_qdrant_collection, close_qdrant_clients
+from app.db.postgres import init_db, close_db
+from app.db.redis_cache import close_redis
+from app.api.routes.ingest import router as ingest_router
 
 setup_logging()
 logger = structlog.get_logger(__name__)
@@ -18,7 +22,12 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("startup", env=settings.app_env, log_level=settings.log_level)
+    await init_qdrant_collection()
+    await init_db()
     yield
+    await close_qdrant_clients()
+    await close_db()
+    await close_redis()
     logger.info("shutdown")
 
 
@@ -41,6 +50,9 @@ app.add_middleware(
 
 app.add_exception_handler(NeuralSearchError, neural_search_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
+
+# Routers
+app.include_router(ingest_router)
 
 
 @app.get("/health", tags=["system"])

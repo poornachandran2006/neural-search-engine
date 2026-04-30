@@ -1,0 +1,48 @@
+import uuid
+from datetime import datetime, timezone
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, JSON
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.postgres import Base
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    filename: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+    file_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    upserted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Chat(Base):
+    __tablename__ = "chats"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title: Mapped[str] = mapped_column(String(512), nullable=False, default="New Chat")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    messages: Mapped[list["Message"]] = relationship(
+        "Message", back_populates="chat", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    chat_id: Mapped[str] = mapped_column(String, ForeignKey("chats.id", ondelete="CASCADE"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)   # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")

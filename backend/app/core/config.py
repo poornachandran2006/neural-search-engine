@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     redis_ttl: int = 3600
 
     # Embedding
-    embedding_model: str = "models/text-embedding-004"
-    embedding_dim: int = 768
+    embedding_model: str = "models/gemini-embedding-001"
+    embedding_dim: int = 3072
 
     # Chunking
     chunk_size: int = 512
