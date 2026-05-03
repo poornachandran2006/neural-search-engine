@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreated, onStreamDone }: Props) {
-  const { state, send } = useStream();
+  const { state, send }    = useStream();
   const bottomRef          = useRef<HTMLDivElement>(null);
   const isStreaming        = state.status === "streaming";
   const streamDoneFiredRef = useRef(false);
@@ -56,36 +56,68 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
   const intentBadgeClass = state.meta ? `badge-${state.meta.intent}` : "";
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "var(--bg-base)" }}>
 
       {/* Meta bar */}
       {state.meta && (
-        <div className="animate-fade-in flex items-center gap-2 px-5 py-2 border-b border-border-subtle bg-bg-surface shrink-0 overflow-hidden">
-          <span className={`font-mono text-xs font-medium rounded-sm px-2 py-px ${intentBadgeClass}`}>
+        <div
+          className="animate-fade-in flex items-center gap-2 px-5 py-2 shrink-0 overflow-x-auto"
+          style={{
+            borderBottom: "1px solid var(--border-subtle)",
+            background: "var(--bg-surface)",
+          }}
+        >
+          <span className={`font-mono text-xs font-medium rounded-sm px-2 py-px shrink-0 ${intentBadgeClass}`}>
             {state.meta.intent}
           </span>
           {state.meta.cached && (
-            <span className="font-mono text-xs text-accent-green bg-accent-green/[0.08] border border-accent-green/20 rounded-sm px-2 py-px">
+            <span
+              className="font-mono text-xs rounded-sm px-2 py-px shrink-0"
+              style={{
+                color: "var(--accent-green)",
+                background: "rgba(0,255,157,0.08)",
+                border: "1px solid rgba(0,255,157,0.20)",
+              }}
+            >
               cached
             </span>
           )}
           {state.meta.is_multi_doc && (
-            <span className="font-mono text-xs text-accent-amber bg-accent-amber/[0.08] border border-accent-amber/20 rounded-sm px-2 py-px">
+            <span
+              className="font-mono text-xs rounded-sm px-2 py-px shrink-0"
+              style={{
+                color: "var(--accent-amber)",
+                background: "rgba(255,179,71,0.08)",
+                border: "1px solid rgba(255,179,71,0.20)",
+              }}
+            >
               map-reduce
             </span>
           )}
-          <span className="font-mono text-xs text-text-muted truncate flex-1">
+          <span className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-muted)" }}>
             → {state.meta.rewritten_query}
           </span>
         </div>
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-5 flex flex-col gap-4">
         {messages.length === 0 && !isStreaming && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-            <div className="font-mono text-3xl text-border-strong">◈</div>
-            <p className="text-base text-center max-w-[280px] leading-relaxed">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2 transition-all duration-300"
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border-default)",
+                color: "var(--border-strong)",
+              }}
+            >
+              ◈
+            </div>
+            <p
+              className="text-base text-center max-w-[280px] leading-relaxed"
+              style={{ color: "var(--text-muted)" }}
+            >
               Upload a document and ask anything about its contents.
             </p>
           </div>
@@ -107,9 +139,12 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
       </div>
 
       {/* Input */}
-      <div className="px-5 pb-4 pt-3 border-t border-border-subtle shrink-0">
+      <div
+        className="px-4 md:px-8 pb-4 pt-3 shrink-0"
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
+      >
         <ChatInput onSend={handleSend} disabled={isStreaming} />
-        <p className="text-center mt-2 font-mono text-xs text-text-muted">
+        <p className="text-center mt-2 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
           Enter to send · Shift+Enter for newline
         </p>
       </div>

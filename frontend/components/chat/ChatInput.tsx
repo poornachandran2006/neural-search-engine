@@ -8,9 +8,9 @@ interface Props {
 }
 
 export function ChatInput({ onSend, disabled }: Props) {
-  const [value, setValue]   = useState("");
-  const textareaRef         = useRef<HTMLTextAreaElement>(null);
-  const canSubmit           = !disabled && value.trim().length > 0;
+  const [value, setValue] = useState("");
+  const textareaRef       = useRef<HTMLTextAreaElement>(null);
+  const canSubmit         = !disabled && value.trim().length > 0;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -31,7 +31,14 @@ export function ChatInput({ onSend, disabled }: Props) {
   };
 
   return (
-    <div className="flex items-end gap-2.5 bg-bg-elevated border border-border-default rounded-2xl px-3 py-2.5 focus-within:border-accent-cyan-dim transition-colors duration-150">
+    <div
+      className="flex items-end gap-2.5 rounded-2xl px-3 py-2.5 transition-all duration-200"
+      style={{
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-default)",
+      }}
+      onFocus={() => {}}
+    >
       <textarea
         ref={textareaRef}
         value={value}
@@ -41,16 +48,21 @@ export function ChatInput({ onSend, disabled }: Props) {
         placeholder="Ask anything about your documents…"
         disabled={disabled}
         rows={1}
-        className="flex-1 bg-transparent border-none outline-none resize-none font-sans text-lg leading-relaxed text-text-primary placeholder:text-text-muted min-h-6 max-h-40 overflow-y-auto disabled:opacity-50"
+        className="flex-1 bg-transparent border-none outline-none resize-none font-sans text-lg leading-relaxed min-h-6 max-h-40 overflow-y-auto disabled:opacity-50 transition-colors duration-200"
+        style={{
+          color: "var(--text-primary)",
+        }}
       />
       <button
         onClick={submit}
         disabled={!canSubmit}
-        className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center text-sm transition-all duration-150
-          ${canSubmit
-            ? "border-accent-cyan text-accent-cyan bg-accent-cyan/10 hover:bg-accent-cyan/20 cursor-pointer"
-            : "border-border-subtle text-text-muted cursor-not-allowed"
-          }`}
+        className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
+        style={{
+          border: canSubmit ? "1px solid var(--accent-cyan)" : "1px solid var(--border-subtle)",
+          color: canSubmit ? "var(--accent-cyan)" : "var(--text-muted)",
+          background: canSubmit ? "rgba(0,212,255,0.10)" : "transparent",
+          transform: canSubmit ? "scale(1)" : "scale(0.95)",
+        }}
       >
         ↑
       </button>

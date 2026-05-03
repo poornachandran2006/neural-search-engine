@@ -7,37 +7,77 @@
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
 
+  /* ── Dark mode (default) ── */
+  :root, [data-theme="dark"] {
+    --bg-base:          #0a0b0e;
+    --bg-surface:       #111318;
+    --bg-elevated:      #181c24;
+    --bg-hover:         #1e2330;
+    --border-subtle:    #1f2433;
+    --border-default:   #2a3147;
+    --border-strong:    #3d4d6b;
+    --text-primary:     #e8eaf0;
+    --text-secondary:   #8892a4;
+    --text-muted:       #4a5568;
+    --accent-cyan:      #00d4ff;
+    --accent-cyan-dim:  #0099bb;
+    --accent-green:     #00ff9d;
+    --accent-amber:     #ffb347;
+    --accent-red:       #ff4d6d;
+    --scrollbar-thumb:  #3d4d6b;
+    --scrollbar-hover:  #0099bb;
+  }
+
+  /* ── Light mode ── */
+  [data-theme="light"] {
+    --bg-base:          #f4f6fb;
+    --bg-surface:       #ffffff;
+    --bg-elevated:      #edf0f7;
+    --bg-hover:         #e4e8f2;
+    --border-subtle:    #dde2ed;
+    --border-default:   #c8d0e0;
+    --border-strong:    #a0aec0;
+    --text-primary:     #0f1117;
+    --text-secondary:   #4a5568;
+    --text-muted:       #a0aec0;
+    --accent-cyan:      #0099bb;
+    --accent-cyan-dim:  #007a96;
+    --accent-green:     #00916b;
+    --accent-amber:     #d97706;
+    --accent-red:       #e53e5a;
+    --scrollbar-thumb:  #c8d0e0;
+    --scrollbar-hover:  #0099bb;
+  }
+
   html {
-    background: #0a0b0e;
-    color: #e8eaf0;
+    background: var(--bg-base);
+    color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
+    transition: background 0.2s ease, color 0.2s ease;
   }
 
   ::-webkit-scrollbar       { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #3d4d6b; border-radius: 2px; }
-  ::-webkit-scrollbar-thumb:hover { background: #0099bb; }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
-  ::selection { background: rgba(0,212,255,0.15); color: #00d4ff; }
+  ::selection { background: rgba(0,212,255,0.15); color: var(--accent-cyan); }
 }
 
 @layer components {
-  /* Streaming cursor */
   .streaming-cursor::after {
     content: "▋";
-    color: #00d4ff;
+    color: var(--accent-cyan);
     animation: blink 0.8s step-end infinite;
     margin-left: 1px;
   }
 
-  /* Intent badges */
   .badge-content       { @apply bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/25; }
   .badge-summarization { @apply bg-accent-green/10 text-accent-green border border-accent-green/25; }
   .badge-comparison    { @apply bg-accent-amber/10 text-accent-amber border border-accent-amber/25; }
   .badge-metadata      { @apply bg-accent-red/10 text-accent-red border border-accent-red/25; }
 
-  /* Prose inside assistant messages */
-  .prose-dark p         { @apply mb-3 leading-7 text-text-primary last:mb-0; }
-  .prose-dark strong    { @apply text-accent-cyan font-semibold; }
-  .prose-dark code      { @apply font-mono text-xs bg-bg-elevated border border-border-default rounded-sm px-1.5 py-0.5 text-accent-green; }
+  .prose-dark p         { @apply mb-3 leading-7 last:mb-0; color: var(--text-primary); }
+  .prose-dark strong    { font-weight: 600; color: var(--accent-cyan); }
+  .prose-dark code      { @apply font-mono text-xs rounded-sm px-1.5 py-0.5; background: var(--bg-elevated); border: 1px solid var(--border-default); color: var(--accent-green); }
 }
