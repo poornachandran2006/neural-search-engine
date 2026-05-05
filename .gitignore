@@ -29,3 +29,10 @@ Thumbs.db
 
 # BM25 index pickle
 *.pkl
+
+# Evaluation outputs
+evaluation/results/
+backend/evaluation/results/
+
+# Qdrant / vector storage (if used locally)
+qdrant_storage/
