@@ -10,53 +10,71 @@ from app.services.retrieval.reranker import rerank
 
 logger = get_logger(__name__)
 
+_MULTI_DOC_SCORE_THRESHOLD = 0.05
 
-async def run_query_pipeline(raw_query: str) -> dict:
+
+async def run_query_pipeline(
+    raw_query: str,
+    status_queue: asyncio.Queue | None = None,
+) -> dict:
     """
     Orchestrates all 7 pre-generation steps of the query pipeline.
-    All blocking I/O (Groq API, Qdrant, FlashRank) runs in a thread
-    pool via asyncio.to_thread() so the event loop stays free.
+    If status_queue is provided, emits status dicts after each step
+    so the caller can stream live pipeline progress to the frontend.
     """
+
+    async def emit(step: str, label: str, done: bool = True):
+        if status_queue is not None:
+            await status_queue.put({"step": step, "label": label, "done": done})
+
     logger.info("query_pipeline_started", query=raw_query[:80])
 
-    # Step 1: Normalize (pure CPU — fast, no thread needed)
+    # Step 1: Normalize
+    await emit("normalize", "Normalizing query...", done=False)
     normalized = normalize_query(raw_query)
+    await emit("normalize", "Query normalized", done=True)
 
-    # Step 2 & 3: Intent detection and query rewriting run concurrently
-    # Both are Groq API calls — parallelizing them saves ~1 second
+    # Step 2 & 3: Intent detection and query rewriting (concurrent Groq calls)
+    await emit("intent", "Detecting intent...", done=False)
     intent_result, rewritten = await asyncio.gather(
         asyncio.to_thread(detect_intent, normalized),
-        asyncio.to_thread(rewrite_query, normalized, "content"),  # temp intent
+        asyncio.to_thread(rewrite_query, normalized, "content"),
     )
     intent = intent_result["intent"]
     confidence = intent_result["confidence"]
+    await emit("intent", f"Intent: {intent}", done=True)
 
     # Re-rewrite with correct intent if it differs from "content"
     if intent != "content":
+        await emit("rewrite", "Rewriting query...", done=False)
         rewritten = await asyncio.to_thread(rewrite_query, normalized, intent)
+        await emit("rewrite", "Query rewritten", done=True)
+    else:
+        await emit("rewrite", "Query rewritten", done=True)
 
-    # Step 4 & 5: Dense and sparse retrieval run concurrently
+    # Step 4 & 5: Dense and sparse retrieval (concurrent)
+    await emit("retrieve", "Retrieving chunks...", done=False)
     dense_chunks, sparse_chunks = await asyncio.gather(
         asyncio.to_thread(dense_retrieve, rewritten),
         asyncio.to_thread(sparse_retrieve, rewritten),
     )
 
-    # Step 6: RRF Fusion (pure CPU — fast, no thread needed)
+    # Step 6: RRF Fusion
     fused_chunks = reciprocal_rank_fusion(dense_chunks, sparse_chunks)
     candidates = fused_chunks[:20]
+    await emit("retrieve", f"{len(candidates)} candidates fused", done=True)
 
-    # Step 7: Rerank in thread pool (FlashRank is CPU-bound)
+    # Step 7: Rerank
+    await emit("rerank", "Reranking...", done=False)
     if intent in ("summarization", "comparison"):
         final_chunks = candidates[:5]
         for chunk in final_chunks:
             chunk.setdefault("rerank_score", chunk.get("rrf_score", 0.1))
     else:
         final_chunks = await asyncio.to_thread(rerank, rewritten, candidates)
+    await emit("rerank", f"Top {len(final_chunks)} chunks selected", done=True)
 
-    # Determine multi-doc — only count documents with meaningful rerank scores.
-    # A chunk scoring below 0.05 is noise from BM25/RRF and should not trigger
-    # map-reduce, which costs 2 extra Groq calls.
-    _MULTI_DOC_SCORE_THRESHOLD = 0.05
+    # Determine multi-doc
     source_files = {c["source_file"] for c in final_chunks if c.get("source_file")}
     contributing_sources = {
         c["source_file"]
@@ -64,6 +82,8 @@ async def run_query_pipeline(raw_query: str) -> dict:
         if c.get("source_file") and float(c.get("rerank_score", 0.0)) >= _MULTI_DOC_SCORE_THRESHOLD
     }
     is_multi_doc = len(contributing_sources) > 1
+
+    await emit("generate", "Generating answer...", done=False)
 
     logger.info(
         "query_pipeline_complete",

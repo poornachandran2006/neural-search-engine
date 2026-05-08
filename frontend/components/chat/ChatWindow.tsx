@@ -169,15 +169,38 @@ export function ChatWindow({
         {messages.map((msg, i) => {
           if (msg.id === streamingMsgIdRef.current) {
             return (
-              <MessageBubble
-                key={msg.id}
-                message={{
-                  ...msg,
-                  content: state.content,
-                  sources: state.sources,
-                  isStreaming: state.status === "streaming",
-                }}
-              />
+              <div key={msg.id} className="flex flex-col gap-2">
+                {state.pipelineSteps.length > 0 && state.status === "streaming" && !state.content && (
+                  <div
+                    className="flex flex-col gap-1 px-3 py-2 rounded-lg font-mono text-xs"
+                    style={{
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-subtle)",
+                      color: "var(--text-muted)",
+                      maxWidth: "320px",
+                    }}
+                  >
+                    {state.pipelineSteps.map((step) => (
+                      <div key={step.step} className="flex items-center gap-2">
+                        <span style={{ color: step.done ? "var(--accent-cyan)" : "var(--accent-amber)" }}>
+                          {step.done ? "✓" : "⟳"}
+                        </span>
+                        <span style={{ color: step.done ? "var(--text-secondary)" : "var(--text-primary)" }}>
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <MessageBubble
+                  message={{
+                    ...msg,
+                    content: state.content,
+                    sources: state.sources,
+                    isStreaming: state.status === "streaming",
+                  }}
+                />
+              </div>
             );
           }
           return <MessageBubble key={msg.id || i} message={msg} />;

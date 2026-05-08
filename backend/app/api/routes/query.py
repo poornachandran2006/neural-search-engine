@@ -1,3 +1,4 @@
+import asyncio
 import json
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -49,15 +50,15 @@ async def query_stream(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Production RAG endpoint with conversational memory.
+    Production RAG endpoint with conversational memory and pipeline status events.
 
     SSE event types:
+      data: [STATUS]{...}    — live pipeline step progress
       data: [META]{...}      — pipeline metadata (intent, sources, chat_id)
       data: {token}          — answer tokens
       data: [SOURCES]{...}   — source chunk cards
       data: [DONE]           — stream complete
     """
-    # Normalize history to plain dicts for Groq API
     history = [{"role": m.role, "content": m.content} for m in request.history]
 
     # Ensure chat session exists
@@ -84,34 +85,51 @@ async def query_stream(
     db.add(user_msg)
     await db.commit()
 
-    # Run retrieval pipeline (history not needed here — retrieval is query-only)
-    pipeline_result = await run_query_pipeline(request.query)
-    chunks = pipeline_result["chunks"]
-    intent = pipeline_result["intent"]
-    is_multi_doc = pipeline_result["is_multi_doc"]
-    normalized = pipeline_result["normalized_query"]
-    rewritten = pipeline_result["rewritten_query"]
-
-    sources = [
-        {
-            "source_file": c.get("source_file", ""),
-            "page_number": c.get("page_number", 0),
-            "chunk_index": c.get("chunk_index", 0),
-            "rerank_score": round(float(c.get("rerank_score", 0.0)), 4),
-            "text_preview": c.get("text", "")[:200],
-        }
-        for c in chunks
-        if float(c.get("rerank_score", 0.0)) >= 0.05
-    ]
-
-    # Check Redis cache — history is intentionally excluded from cache key
-    # because the same question should return the same retrieved answer
-    # regardless of prior conversation context
-    cache_key = make_cache_key(normalized, rewritten)
-    cached = await get_cached_response(cache_key)
-
     async def event_stream():
         nonlocal db
+
+        # Create status queue — pipeline writes to it, we read and emit as SSE
+        status_queue: asyncio.Queue = asyncio.Queue()
+
+        # Run pipeline concurrently with status event emission
+        pipeline_task = asyncio.create_task(
+            run_query_pipeline(request.query, status_queue=status_queue)
+        )
+
+        # Drain status events until pipeline completes
+        while not pipeline_task.done():
+            try:
+                status = await asyncio.wait_for(status_queue.get(), timeout=0.1)
+                yield f"data: [STATUS]{json.dumps(status)}\n\n"
+            except asyncio.TimeoutError:
+                continue
+
+        # Drain any remaining status events after pipeline finishes
+        while not status_queue.empty():
+            status = status_queue.get_nowait()
+            yield f"data: [STATUS]{json.dumps(status)}\n\n"
+
+        pipeline_result = await pipeline_task
+        chunks = pipeline_result["chunks"]
+        intent = pipeline_result["intent"]
+        is_multi_doc = pipeline_result["is_multi_doc"]
+        normalized = pipeline_result["normalized_query"]
+        rewritten = pipeline_result["rewritten_query"]
+
+        sources = [
+            {
+                "source_file": c.get("source_file", ""),
+                "page_number": c.get("page_number", 0),
+                "chunk_index": c.get("chunk_index", 0),
+                "rerank_score": round(float(c.get("rerank_score", 0.0)), 4),
+                "text_preview": c.get("text", "")[:200],
+            }
+            for c in chunks
+            if float(c.get("rerank_score", 0.0)) >= 0.05
+        ]
+
+        cache_key = make_cache_key(normalized, rewritten)
+        cached = await get_cached_response(cache_key)
 
         if cached:
             logger.info("serving_from_cache", key=cache_key[:20])
@@ -130,12 +148,10 @@ async def query_stream(
             await db.commit()
             return
 
-        # Safety check
         if not has_sufficient_context(chunks, intent=intent):
             fallback_text = "I couldn't find relevant information in the uploaded documents to answer this question."
             async for event in stream_fallback():
                 yield event
-
             assistant_msg = Message(
                 chat_id=chat_id,
                 role="assistant",
@@ -145,7 +161,6 @@ async def query_stream(
             await db.commit()
             return
 
-        # Send metadata
         meta = {
             "intent": intent,
             "rewritten_query": rewritten,
@@ -155,7 +170,6 @@ async def query_stream(
         }
         yield f"data: [META]{json.dumps(meta)}\n\n"
 
-        # Stream generation — pass history for conversational context
         use_map_reduce = is_multi_doc or intent in ("comparison", "summarization")
         full_answer_parts = []
 

@@ -9,6 +9,7 @@ const INITIAL_STATE: StreamState = {
   content: "",
   meta: null,
   sources: [],
+  pipelineSteps: [],
 };
 
 export function useStream() {
@@ -21,13 +22,22 @@ export function useStream() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setState({ status: "streaming", content: "", meta: null, sources: [] });
+    setState({ status: "streaming", content: "", meta: null, sources: [], pipelineSteps: [] });
 
     try {
       for await (const event of streamQuery(query, chatId, controller.signal, history)) {
         if (controller.signal.aborted) break;
 
         switch (event.type) {
+          case "status":
+            setState((s) => ({
+              ...s,
+              pipelineSteps: [
+                ...s.pipelineSteps.filter((p) => p.step !== event.data.step),
+                event.data,
+              ],
+            }));
+            break;
           case "meta":
             setState((s) => ({ ...s, meta: event.data }));
             break;

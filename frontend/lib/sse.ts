@@ -1,6 +1,7 @@
-import type { StreamMeta, SourceChunk } from "@/types";
+import type { StreamMeta, SourceChunk, PipelineStatus } from "@/types";
 
 export type SSEEvent =
+  | { type: "status"; data: PipelineStatus }
   | { type: "meta"; data: StreamMeta }
   | { type: "token"; data: string }
   | { type: "sources"; data: SourceChunk[] }
@@ -58,6 +59,15 @@ export async function* streamQuery(
       if (raw === "[DONE]") {
         yield { type: "done" };
         return;
+      }
+
+      if (raw.startsWith("[STATUS]")) {
+        try {
+          yield { type: "status", data: JSON.parse(raw.slice(8)) };
+        } catch {
+          // malformed status — skip
+        }
+        continue;
       }
 
       if (raw.startsWith("[META]")) {

@@ -35,11 +35,18 @@ export interface StreamMeta {
   cached?: boolean;
 }
 
+export interface PipelineStatus {
+  step: "normalize" | "intent" | "rewrite" | "retrieve" | "rerank" | "generate";
+  label: string;
+  done: boolean;
+}
+
 export interface StreamState {
   status: "idle" | "streaming" | "done" | "error";
   content: string;
   meta: StreamMeta | null;
   sources: SourceChunk[];
+  pipelineSteps: PipelineStatus[];
   error?: string;
 }
 
