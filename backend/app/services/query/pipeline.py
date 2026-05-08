@@ -53,9 +53,17 @@ async def run_query_pipeline(raw_query: str) -> dict:
     else:
         final_chunks = await asyncio.to_thread(rerank, rewritten, candidates)
 
-    # Determine multi-doc
+    # Determine multi-doc — only count documents with meaningful rerank scores.
+    # A chunk scoring below 0.05 is noise from BM25/RRF and should not trigger
+    # map-reduce, which costs 2 extra Groq calls.
+    _MULTI_DOC_SCORE_THRESHOLD = 0.05
     source_files = {c["source_file"] for c in final_chunks if c.get("source_file")}
-    is_multi_doc = len(source_files) > 1
+    contributing_sources = {
+        c["source_file"]
+        for c in final_chunks
+        if c.get("source_file") and float(c.get("rerank_score", 0.0)) >= _MULTI_DOC_SCORE_THRESHOLD
+    }
+    is_multi_doc = len(contributing_sources) > 1
 
     logger.info(
         "query_pipeline_complete",
@@ -72,5 +80,5 @@ async def run_query_pipeline(raw_query: str) -> dict:
         "confidence": confidence,
         "chunks": final_chunks,
         "is_multi_doc": is_multi_doc,
-        "source_files": list(source_files),
+        "source_files": list(contributing_sources),
     }

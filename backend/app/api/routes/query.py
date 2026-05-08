@@ -101,6 +101,7 @@ async def query_stream(
             "text_preview": c.get("text", "")[:200],
         }
         for c in chunks
+        if float(c.get("rerank_score", 0.0)) >= 0.05
     ]
 
     # Check Redis cache — history is intentionally excluded from cache key
