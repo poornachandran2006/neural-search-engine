@@ -14,19 +14,39 @@ interface Props {
   onStreamDone: () => void;
 }
 
-export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreated, onStreamDone }: Props) {
-  const { state, send }    = useStream();
-  const bottomRef          = useRef<HTMLDivElement>(null);
-  const isStreaming        = state.status === "streaming";
-  const streamDoneFiredRef = useRef(false);
+export function ChatWindow({
+  messages,
+  activeChatId,
+  onMessageSent,
+  onChatCreated,
+  onStreamDone,
+}: Props) {
+  const { state, send } = useStream();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const prevStatusRef = useRef<string>("idle");
+  const streamingMsgIdRef = useRef<string | null>(null);
+  const finalContentRef = useRef<string>("");
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, state.content]);
 
+  // Track content as it streams so we have it when "done" fires
   useEffect(() => {
-    if (state.status === "done" && state.content && !streamDoneFiredRef.current) {
-      streamDoneFiredRef.current = true;
+    if (state.status === "streaming") {
+      finalContentRef.current = state.content;
+    }
+  }, [state.content, state.status]);
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const curr = state.status;
+    prevStatusRef.current = curr;
+
+    // Only fire when transitioning INTO "done" from "streaming"
+    if (prev === "streaming" && curr === "done") {
+      streamingMsgIdRef.current = null;
+
       if (state.meta?.chat_id && state.meta.chat_id !== activeChatId) {
         onChatCreated(state.meta.chat_id);
       }
@@ -36,7 +56,7 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: state.content,
+          content: finalContentRef.current,
           sources: state.sources,
           created_at: new Date().toISOString(),
         }
@@ -45,20 +65,37 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
   }, [state.status]); // eslint-disable-line
 
   const handleSend = (query: string) => {
-    streamDoneFiredRef.current = false;
+    const streamingId = crypto.randomUUID();
+    streamingMsgIdRef.current = streamingId;
+    finalContentRef.current = "";
+
     onMessageSent(
-      { id: crypto.randomUUID(), role: "user",      content: query, created_at: new Date().toISOString() },
-      { id: crypto.randomUUID(), role: "assistant", content: "",    created_at: new Date().toISOString(), isStreaming: true }
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: query,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: streamingId,
+        role: "assistant",
+        content: "",
+        created_at: new Date().toISOString(),
+        isStreaming: true,
+      }
     );
+
     send(query, activeChatId ?? undefined);
   };
 
   const intentBadgeClass = state.meta ? `badge-${state.meta.intent}` : "";
+  const isStreaming = state.status === "streaming";
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "var(--bg-base)" }}>
-
-      {/* Meta bar */}
+    <div
+      className="flex flex-col h-full overflow-hidden"
+      style={{ background: "var(--bg-base)" }}
+    >
       {state.meta && (
         <div
           className="animate-fade-in flex items-center gap-2 px-5 py-2 shrink-0 overflow-x-auto"
@@ -67,7 +104,9 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
             background: "var(--bg-surface)",
           }}
         >
-          <span className={`font-mono text-xs font-medium rounded-sm px-2 py-px shrink-0 ${intentBadgeClass}`}>
+          <span
+            className={`font-mono text-xs font-medium rounded-sm px-2 py-px shrink-0 ${intentBadgeClass}`}
+          >
             {state.meta.intent}
           </span>
           {state.meta.cached && (
@@ -94,18 +133,20 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
               map-reduce
             </span>
           )}
-          <span className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-muted)" }}>
+          <span
+            className="font-mono text-xs truncate flex-1"
+            style={{ color: "var(--text-muted)" }}
+          >
             → {state.meta.rewritten_query}
           </span>
         </div>
       )}
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-5 flex flex-col gap-4">
-        {messages.length === 0 && !isStreaming && (
+        {messages.length === 0 && state.status === "idle" && (
           <div className="flex-1 flex flex-col items-center justify-center gap-3">
             <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2 transition-all duration-300"
+              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2"
               style={{
                 background: "var(--bg-elevated)",
                 border: "1px solid var(--border-default)",
@@ -124,11 +165,16 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
         )}
 
         {messages.map((msg, i) => {
-          if (msg.isStreaming && (state.status === "streaming" || state.status === "done")) {
+          if (msg.id === streamingMsgIdRef.current) {
             return (
               <MessageBubble
                 key={msg.id}
-                message={{ ...msg, content: state.content, sources: state.sources, isStreaming: state.status === "streaming" }}
+                message={{
+                  ...msg,
+                  content: state.content,
+                  sources: state.sources,
+                  isStreaming: state.status === "streaming",
+                }}
               />
             );
           }
@@ -138,13 +184,15 @@ export function ChatWindow({ messages, activeChatId, onMessageSent, onChatCreate
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div
         className="px-4 md:px-8 pb-4 pt-3 shrink-0"
         style={{ borderTop: "1px solid var(--border-subtle)" }}
       >
         <ChatInput onSend={handleSend} disabled={isStreaming} />
-        <p className="text-center mt-2 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+        <p
+          className="text-center mt-2 font-mono text-xs"
+          style={{ color: "var(--text-muted)" }}
+        >
           Enter to send · Shift+Enter for newline
         </p>
       </div>
