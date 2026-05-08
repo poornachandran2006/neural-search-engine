@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from datetime import datetime, timezone
@@ -15,37 +16,26 @@ _groq_client = Groq(api_key=settings.groq_api_key)
 QUESTIONS_PATH = Path("/app/evaluation/dataset/questions.json")
 RESULTS_PATH = Path("/app/evaluation/results/benchmark_results.json")
 
+# Semaphore: max 3 questions running concurrently (respects Groq rate limits)
+_SEM = asyncio.Semaphore(3)
+
 
 # ─── Metric 1: Recall@5 ──────────────────────────────────────────────────────
 
 def compute_recall_at_5(chunks: list[dict], keywords: list[str]) -> float:
-    """
-    Returns 1.0 if any of the top-5 chunks contain at least 2 of the
-    expected keywords. Returns 0.0 otherwise.
-
-    Why keywords instead of exact chunk index?
-    We don't store chunk indices in the questions file because chunk indices
-    can change when documents are re-ingested. Keywords are stable.
-    """
     if not chunks or not keywords:
         return 0.0
-
     for chunk in chunks[:5]:
         text = chunk.get("text", chunk.get("text_preview", "")).lower()
         matches = sum(1 for kw in keywords if kw.lower() in text)
         if matches >= min(2, len(keywords)):
             return 1.0
-
     return 0.0
 
 
 # ─── Metric 2: Faithfulness ──────────────────────────────────────────────────
 
 def compute_faithfulness(context: str, answer: str) -> float:
-    """
-    LLM judge: does the answer contain ONLY information from the context?
-    Score 0.0 (completely hallucinated) to 1.0 (fully grounded).
-    """
     prompt = f"""You are an evaluation judge for RAG systems.
 
 Context (the only information the system had access to):
@@ -70,25 +60,19 @@ No explanation outside the JSON."""
             max_tokens=128,
         )
         raw = response.choices[0].message.content.strip()
-        # Strip markdown if present
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        result = json.loads(raw.strip())
-        return float(result.get("score", 0.5))
+        return float(json.loads(raw.strip()).get("score", 0.5))
     except Exception as e:
         logger.error("faithfulness_judge_failed", error=str(e))
-        return 0.5  # neutral fallback
+        return 0.5
 
 
 # ─── Metric 3: Answer Relevancy ──────────────────────────────────────────────
 
 def compute_answer_relevancy(question: str, answer: str) -> float:
-    """
-    LLM judge: does the answer actually address the question?
-    Score 0.0 (completely off-topic) to 1.0 (perfectly addresses question).
-    """
     prompt = f"""You are an evaluation judge for RAG systems.
 
 Question asked by the user:
@@ -117,82 +101,54 @@ No explanation outside the JSON."""
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        result = json.loads(raw.strip())
-        return float(result.get("score", 0.5))
+        return float(json.loads(raw.strip()).get("score", 0.5))
     except Exception as e:
         logger.error("relevancy_judge_failed", error=str(e))
         return 0.5
 
 
-# ─── Main benchmark runner ────────────────────────────────────────────────────
+# ─── Single question evaluator ────────────────────────────────────────────────
 
-async def run_benchmark() -> dict:
-    """
-    Runs the full evaluation benchmark against all questions in questions.json.
-    Returns aggregated metrics and per-question results.
-    """
-    if not QUESTIONS_PATH.exists():
-        raise FileNotFoundError(f"Questions file not found: {QUESTIONS_PATH}")
-
-    dataset = json.loads(QUESTIONS_PATH.read_text())
-    questions = dataset["questions"]
-
-    logger.info("benchmark_started", total_questions=len(questions))
-
-    per_question_results = []
-    recall_scores = []
-    faithfulness_scores = []
-    relevancy_scores = []
-
-    for i, q in enumerate(questions):
+async def _evaluate_one(q: dict, index: int, total: int) -> dict:
+    """Evaluate a single question with concurrency control."""
+    async with _SEM:
         qid = q["id"]
         question = q["question"]
         keywords = q.get("relevant_chunk_keywords", [])
 
-        logger.info("evaluating_question", id=qid, n=f"{i+1}/{len(questions)}")
+        logger.info("evaluating_question", id=qid, n=f"{index+1}/{total}")
 
         try:
-            # Run full pipeline
             pipeline_result = await run_query_pipeline(question)
             chunks = pipeline_result["chunks"]
 
-            # Build context string from chunks
             context = "\n\n".join(
                 c.get("text", c.get("text_preview", "")) for c in chunks
             )
 
-            # Generate answer using the same prompt as production
             from app.services.rag.prompt_builder import build_single_doc_prompt
             messages = build_single_doc_prompt(question, chunks)
-            gen_response = _groq_client.chat.completions.create(
-                model=settings.groq_model,
-                messages=messages,
-                temperature=0.0,
-                max_tokens=512,
-                stream=False,
+
+            # Run answer generation in thread (sync Groq client)
+            def _gen_answer():
+                resp = _groq_client.chat.completions.create(
+                    model=settings.groq_model,
+                    messages=messages,
+                    temperature=0.0,
+                    max_tokens=512,
+                    stream=False,
+                )
+                return resp.choices[0].message.content.strip()
+
+            answer = await asyncio.to_thread(_gen_answer)
+
+            # Run both judges concurrently in threads
+            faithfulness, relevancy = await asyncio.gather(
+                asyncio.to_thread(compute_faithfulness, context, answer),
+                asyncio.to_thread(compute_answer_relevancy, question, answer),
             )
-            answer = gen_response.choices[0].message.content.strip()
 
-            # Compute metrics
             recall = compute_recall_at_5(chunks, keywords)
-            faithfulness = compute_faithfulness(context, answer)
-            relevancy = compute_answer_relevancy(question, answer)
-
-            recall_scores.append(recall)
-            faithfulness_scores.append(faithfulness)
-            relevancy_scores.append(relevancy)
-
-            per_question_results.append({
-                "id": qid,
-                "question": question,
-                "answer": answer,
-                "recall_at_5": recall,
-                "faithfulness": round(faithfulness, 4),
-                "answer_relevancy": round(relevancy, 4),
-                "chunks_retrieved": len(chunks),
-                "source_files": pipeline_result["source_files"],
-                "intent": pipeline_result["intent"],
-            })
 
             logger.info(
                 "question_evaluated",
@@ -202,38 +158,68 @@ async def run_benchmark() -> dict:
                 relevancy=round(relevancy, 3),
             )
 
-            # Pause between questions to respect Groq rate limits
-            time.sleep(2)
+            return {
+                "id": qid,
+                "question": question,
+                "answer": answer,
+                "recall_at_5": recall,
+                "faithfulness": round(faithfulness, 4),
+                "answer_relevancy": round(relevancy, 4),
+                "chunks_retrieved": len(chunks),
+                "source_files": pipeline_result["source_files"],
+                "intent": pipeline_result["intent"],
+            }
 
         except Exception as e:
             logger.error("question_failed", id=qid, error=str(e))
-            per_question_results.append({
+            return {
                 "id": qid,
                 "question": question,
                 "error": str(e),
                 "recall_at_5": 0.0,
                 "faithfulness": 0.0,
                 "answer_relevancy": 0.0,
-            })
-            recall_scores.append(0.0)
-            faithfulness_scores.append(0.0)
-            relevancy_scores.append(0.0)
+                "chunks_retrieved": 0,
+                "source_files": [],
+                "intent": "unknown",
+            }
 
-    # Aggregate
+
+# ─── Main benchmark runner ────────────────────────────────────────────────────
+
+async def run_benchmark() -> dict:
+    if not QUESTIONS_PATH.exists():
+        raise FileNotFoundError(f"Questions file not found: {QUESTIONS_PATH}")
+
+    dataset = json.loads(QUESTIONS_PATH.read_text())
+    questions = dataset["questions"]
     n = len(questions)
+
+    logger.info("benchmark_started", total_questions=n)
+
+    # Run all questions in parallel (semaphore limits to 3 concurrent)
+    tasks = [_evaluate_one(q, i, n) for i, q in enumerate(questions)]
+    per_question_results = await asyncio.gather(*tasks)
+    per_question_results = list(per_question_results)
+
+    # Aggregate metrics
+    recall_scores      = [r["recall_at_5"]      for r in per_question_results]
+    faithfulness_scores = [r["faithfulness"]     for r in per_question_results]
+    relevancy_scores   = [r["answer_relevancy"]  for r in per_question_results]
+
     results = {
         "run_at": datetime.now(timezone.utc).isoformat(),
         "total_questions": n,
         "documents": dataset.get("documents", []),
         "metrics": {
-            "recall_at_5": round(sum(recall_scores) / n, 4),
-            "faithfulness": round(sum(faithfulness_scores) / n, 4),
-            "answer_relevancy": round(sum(relevancy_scores) / n, 4),
+            "recall_at_5":      round(sum(recall_scores)       / n, 4),
+            "faithfulness":     round(sum(faithfulness_scores)  / n, 4),
+            "answer_relevancy": round(sum(relevancy_scores)     / n, 4),
         },
         "per_question": per_question_results,
     }
 
-    # Save to disk
+    # Write ONLY after full completion — never overwrite with partial data
     RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     RESULTS_PATH.write_text(json.dumps(results, indent=2))
     logger.info("benchmark_complete", metrics=results["metrics"])

@@ -125,7 +125,26 @@ export function BenchmarkDashboard() {
     }
   };
 
-  useEffect(() => { fetchResults(); }, []);
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const { running: isRunning } = await api.evaluation.status();
+        if (isRunning) {
+          setRunning(true);
+          setLoading(false);
+          const poll = setInterval(async () => {
+            const { running: still } = await api.evaluation.status();
+            if (!still) { clearInterval(poll); setRunning(false); fetchResults(); }
+          }, 3000);
+        } else {
+          fetchResults();
+        }
+      } catch {
+        fetchResults();
+      }
+    };
+    init();
+  }, []); // eslint-disable-line
 
   const triggerRun = async () => {
     setRunning(true);

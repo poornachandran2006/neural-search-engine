@@ -1,12 +1,12 @@
 from typing import AsyncGenerator
-from groq import Groq
+from groq import AsyncGroq
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.services.rag.prompt_builder import build_single_doc_prompt
 
 logger = get_logger(__name__)
 
-_client = Groq(api_key=settings.groq_api_key)
+_client = AsyncGroq(api_key=settings.groq_api_key)
 
 
 async def stream_answer(
@@ -18,11 +18,6 @@ async def stream_answer(
 
     Yields strings in SSE format: 'data: {token}\\n\\n'
     The final event is always: 'data: [DONE]\\n\\n'
-
-    Why streaming matters: for a 300-token answer at Groq's speed,
-    the first token appears in ~200ms. Without streaming, the user
-    waits 2-3 seconds for the full response. With streaming, they
-    see text immediately — critical for perceived performance.
     """
     messages = build_single_doc_prompt(query, chunks)
 
@@ -34,7 +29,7 @@ async def stream_answer(
     )
 
     try:
-        stream = _client.chat.completions.create(
+        stream = await _client.chat.completions.create(
             model=settings.groq_model,
             messages=messages,
             temperature=settings.llm_temperature,
@@ -42,7 +37,7 @@ async def stream_answer(
             stream=True,
         )
 
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 token = delta.content

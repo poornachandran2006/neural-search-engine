@@ -83,10 +83,6 @@ services:
     container_name: neural_frontend
     ports:
       - "3000:3000"
-    env_file:
-      - ../.env
-    environment:
-      - NEXT_PUBLIC_API_URL=http://neural_backend:8000
     depends_on:
       - backend
     restart: unless-stopped

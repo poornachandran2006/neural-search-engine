@@ -1,21 +1,20 @@
 from typing import AsyncGenerator
 from collections import defaultdict
-from groq import Groq
+from groq import AsyncGroq
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.services.rag.prompt_builder import build_map_prompt, build_reduce_prompt
 
 logger = get_logger(__name__)
 
-_client = Groq(api_key=settings.groq_api_key)
+_client = AsyncGroq(api_key=settings.groq_api_key)
 
-# Max chunks to use per document in the MAP step
 _CHUNKS_PER_DOC = 3
 
 
-def _call_groq(messages: list[dict]) -> str:
-    """Synchronous Groq call for MAP steps — these run sequentially per document."""
-    response = _client.chat.completions.create(
+async def _call_groq(messages: list[dict]) -> str:
+    """Async Groq call for MAP steps — one per document."""
+    response = await _client.chat.completions.create(
         model=settings.groq_model,
         messages=messages,
         temperature=settings.llm_temperature,
@@ -37,14 +36,7 @@ async def stream_map_reduce(
 
     REDUCE: Feed all per-document answers into a final Groq call that
             synthesizes them into one coherent response, streamed via SSE.
-
-    Why Map-Reduce instead of stuffing all chunks into one prompt?
-    1. Context window: 15 documents × 5 chunks × 512 tokens = 38,400 tokens.
-       That exceeds most LLM context limits and degrades answer quality.
-    2. Attribution: per-doc answers let the final reducer cite sources cleanly.
-    3. Parallelizability: MAP steps can run in parallel (future optimization).
     """
-    # Group chunks by source document
     doc_chunks: dict[str, list[dict]] = defaultdict(list)
     for chunk in chunks:
         source = chunk.get("source_file", "unknown")
@@ -56,10 +48,9 @@ async def stream_map_reduce(
         documents=list(doc_chunks.keys()),
     )
 
-    # MAP step — one Groq call per document
+    # MAP step — one async Groq call per document
     per_doc_answers = []
     for source_file, doc_chunk_list in doc_chunks.items():
-        # Sort by rerank score, take top _CHUNKS_PER_DOC
         top_chunks = sorted(
             doc_chunk_list,
             key=lambda c: c.get("rerank_score", 0.0),
@@ -68,7 +59,7 @@ async def stream_map_reduce(
 
         try:
             messages = build_map_prompt(query, top_chunks, source_file)
-            answer = _call_groq(messages)
+            answer = await _call_groq(messages)
             per_doc_answers.append({
                 "source_file": source_file,
                 "answer": answer,
@@ -87,7 +78,7 @@ async def stream_map_reduce(
     reduce_messages = build_reduce_prompt(query, per_doc_answers)
 
     try:
-        stream = _client.chat.completions.create(
+        stream = await _client.chat.completions.create(
             model=settings.groq_model,
             messages=reduce_messages,
             temperature=settings.llm_temperature,
@@ -95,7 +86,7 @@ async def stream_map_reduce(
             stream=True,
         )
 
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta
             if delta and delta.content:
                 yield f"data: {delta.content}\n\n"
