@@ -1,6 +1,7 @@
 import json
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.db.postgres import get_db
@@ -48,24 +49,21 @@ async def query_stream(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Production RAG endpoint with:
-    - Redis cache (TTL 1hr) — identical queries return instantly
-    - PostgreSQL persistence — every message saved to chat history
-    - SSE streaming — tokens arrive token by token
+    Production RAG endpoint with conversational memory.
 
     SSE event types:
-      data: [META]{...}      — pipeline metadata (intent, sources)
+      data: [META]{...}      — pipeline metadata (intent, sources, chat_id)
       data: {token}          — answer tokens
       data: [SOURCES]{...}   — source chunk cards
       data: [DONE]           — stream complete
     """
+    # Normalize history to plain dicts for Groq API
+    history = [{"role": m.role, "content": m.content} for m in request.history]
+
     # Ensure chat session exists
     chat_id = request.chat_id
     if chat_id:
-        from sqlalchemy import select
-        result = await db.execute(
-            __import__('sqlalchemy', fromlist=['select']).select(Chat).where(Chat.id == chat_id)
-        )
+        result = await db.execute(select(Chat).where(Chat.id == chat_id))
         chat = result.scalar_one_or_none()
         if not chat:
             chat_id = None
@@ -86,7 +84,7 @@ async def query_stream(
     db.add(user_msg)
     await db.commit()
 
-    # Run retrieval pipeline
+    # Run retrieval pipeline (history not needed here — retrieval is query-only)
     pipeline_result = await run_query_pipeline(request.query)
     chunks = pipeline_result["chunks"]
     intent = pipeline_result["intent"]
@@ -105,7 +103,9 @@ async def query_stream(
         for c in chunks
     ]
 
-    # Check Redis cache
+    # Check Redis cache — history is intentionally excluded from cache key
+    # because the same question should return the same retrieved answer
+    # regardless of prior conversation context
     cache_key = make_cache_key(normalized, rewritten)
     cached = await get_cached_response(cache_key)
 
@@ -113,14 +113,12 @@ async def query_stream(
         nonlocal db
 
         if cached:
-            # Serve from cache — stream the full answer as one event
             logger.info("serving_from_cache", key=cache_key[:20])
-            yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True})}\n\n"
+            yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True, 'chat_id': chat_id})}\n\n"
             yield f"data: {cached['answer']}\n\n"
             yield f"data: [SOURCES]{json.dumps(cached['sources'])}\n\n"
             yield "data: [DONE]\n\n"
 
-            # Persist assistant message from cache
             assistant_msg = Message(
                 chat_id=chat_id,
                 role="assistant",
@@ -156,15 +154,14 @@ async def query_stream(
         }
         yield f"data: [META]{json.dumps(meta)}\n\n"
 
-        # Stream generation and collect full answer for persistence
+        # Stream generation — pass history for conversational context
         use_map_reduce = is_multi_doc or intent in ("comparison", "summarization")
         full_answer_parts = []
 
         generator = stream_map_reduce if use_map_reduce else stream_answer
-        async for event in generator(request.query, chunks):
+        async for event in generator(request.query, chunks, history=history):
             if event.startswith("data: [DONE]"):
                 break
-            # Extract token from SSE event for accumulation
             token = event.removeprefix("data: ").rstrip("\n")
             full_answer_parts.append(token)
             yield event
@@ -174,7 +171,6 @@ async def query_stream(
 
         full_answer = "".join(full_answer_parts)
 
-        # Persist assistant message
         assistant_msg = Message(
             chat_id=chat_id,
             role="assistant",
@@ -184,7 +180,6 @@ async def query_stream(
         db.add(assistant_msg)
         await db.commit()
 
-        # Cache the result
         await set_cached_response(cache_key, {"answer": full_answer, "sources": sources})
 
     return StreamingResponse(

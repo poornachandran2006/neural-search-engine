@@ -12,6 +12,7 @@ _client = AsyncGroq(api_key=settings.groq_api_key)
 async def stream_answer(
     query: str,
     chunks: list[dict],
+    history: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Single-doc RAG generation with SSE token streaming.
@@ -19,7 +20,7 @@ async def stream_answer(
     Yields strings in SSE format: 'data: {token}\\n\\n'
     The final event is always: 'data: [DONE]\\n\\n'
     """
-    messages = build_single_doc_prompt(query, chunks)
+    messages = build_single_doc_prompt(query, chunks, history=history or [])
 
     logger.info(
         "generation_started",

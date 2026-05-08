@@ -21,6 +21,12 @@ export default function ChatPage() {
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const isStreamingRef = useRef(false);
 
+  // Build history from last 6 completed messages (no streaming placeholders)
+  const history = localMessages
+    .filter((m) => !m.isStreaming && m.content.length > 0)
+    .slice(-6)
+    .map((m) => ({ role: m.role, content: m.content }));
+
   // Load history only when user clicks a chat in sidebar
   const handleSelectChat = useCallback(async (id: string) => {
     setActiveChatId(id);
@@ -126,6 +132,7 @@ export default function ChatPage() {
             onMessageSent={handleMessageSent}
             onChatCreated={handleChatCreated}
             onStreamDone={refreshChats}
+            history={history}
           />
         </div>
       </main>

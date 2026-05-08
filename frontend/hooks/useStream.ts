@@ -15,7 +15,7 @@ export function useStream() {
   const [state, setState] = useState<StreamState>(INITIAL_STATE);
   const abortRef = useRef<AbortController | null>(null);
 
-  const send = useCallback(async (query: string, chatId?: string) => {
+  const send = useCallback(async (query: string, chatId?: string, history?: Array<{ role: string; content: string }>) => {
     // Cancel any in-flight stream
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -24,7 +24,7 @@ export function useStream() {
     setState({ status: "streaming", content: "", meta: null, sources: [] });
 
     try {
-      for await (const event of streamQuery(query, chatId, controller.signal)) {
+      for await (const event of streamQuery(query, chatId, controller.signal, history)) {
         if (controller.signal.aborted) break;
 
         switch (event.type) {

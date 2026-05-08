@@ -27,6 +27,7 @@ async def _call_groq(messages: list[dict]) -> str:
 async def stream_map_reduce(
     query: str,
     chunks: list[dict],
+    history: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Map-Reduce RAG for multi-document or summarization queries.
@@ -75,7 +76,7 @@ async def stream_map_reduce(
         return
 
     # REDUCE step — stream the final merged answer
-    reduce_messages = build_reduce_prompt(query, per_doc_answers)
+    reduce_messages = build_reduce_prompt(query, per_doc_answers, history=history or [])
 
     try:
         stream = await _client.chat.completions.create(

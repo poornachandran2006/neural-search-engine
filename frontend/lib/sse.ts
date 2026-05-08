@@ -21,14 +21,15 @@ export type SSEEvent =
 export async function* streamQuery(
   query: string,
   chatId?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  history?: Array<{ role: string; content: string }>
 ): AsyncGenerator<SSEEvent> {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/query/stream`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, chat_id: chatId }),
+      body: JSON.stringify({ query, chat_id: chatId, history: history ?? [] }),
       signal,
     }
   );

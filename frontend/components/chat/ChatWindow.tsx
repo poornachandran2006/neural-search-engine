@@ -12,6 +12,7 @@ interface Props {
   onMessageSent: (userMsg: Message, assistantMsg: Message) => void;
   onChatCreated: (chatId: string) => void;
   onStreamDone: () => void;
+  history?: Array<{ role: string; content: string }>;
 }
 
 export function ChatWindow({
@@ -20,6 +21,7 @@ export function ChatWindow({
   onMessageSent,
   onChatCreated,
   onStreamDone,
+  history,
 }: Props) {
   const { state, send } = useStream();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -85,7 +87,7 @@ export function ChatWindow({
       }
     );
 
-    send(query, activeChatId ?? undefined);
+    send(query, activeChatId ?? undefined, history);
   };
 
   const intentBadgeClass = state.meta ? `badge-${state.meta.intent}` : "";
