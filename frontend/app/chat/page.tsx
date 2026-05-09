@@ -28,7 +28,7 @@ export default function ChatPage() {
     api.documents.list().then((docs) => {
       const all = docs.flatMap((d) => d.suggestions ?? []);
       setSuggestions(all.slice(0, 5));
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   // Build history from last 6 completed messages (no streaming placeholders)
@@ -49,21 +49,19 @@ export default function ChatPage() {
     }
   }, [setActiveChatId]);
 
-  const handleMessageSent = useCallback((userMsg: Message, assistantMsg: Message) => {
+const handleMessageSent = useCallback((userMsg: Message, assistantMsg: Message) => {
     if (userMsg.id === "") {
-      // Stream done — replace placeholder with final content
+      // Stream done — add the final completed assistant message
       isStreamingRef.current = false;
-      setLocalMessages((prev) =>
-        prev.map((m) =>
-          m.isStreaming
-            ? { ...m, content: assistantMsg.content, sources: assistantMsg.sources, isStreaming: false }
-            : m
-        )
-      );
+      setLocalMessages((prev) => {
+        // Remove any streaming placeholder, then add the final message
+        const withoutPlaceholder = prev.filter((m) => !m.isStreaming);
+        return [...withoutPlaceholder, assistantMsg];
+      });
     } else {
-      // New query — add optimistically right now
+      // New query — only add the user message, NOT the streaming placeholder
       isStreamingRef.current = true;
-      setLocalMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setLocalMessages((prev) => [...prev, userMsg]);
     }
   }, []);
 
