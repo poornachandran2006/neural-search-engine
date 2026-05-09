@@ -103,3 +103,11 @@ export interface BenchmarkResults {
   metrics: BenchmarkMetrics;
   per_question: QuestionResult[];
 }
+
+// ─── Feedback ─────────────────────────────────────────────────────────────────
+
+export interface FeedbackSummary {
+  thumbs_up: number;
+  thumbs_down: number;
+  total: number;
+}

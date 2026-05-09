@@ -23,6 +23,12 @@ export const api = {
       request<Message[]>(`/chats/${chatId}/messages`),
     delete: (chatId: string) =>
       request<{ deleted: string }>(`/chats/${chatId}`, { method: "DELETE" }),
+    submitFeedback: (chatId: string, messageId: string, rating: 1 | -1) =>
+      request<{ status: string }>(`/chats/${chatId}/messages/${messageId}/feedback?rating=${rating}`, {
+        method: "POST",
+      }),
+    feedbackSummary: () =>
+      request<{ thumbs_up: number; thumbs_down: number; total: number }>("/chats/feedback/summary"),
   },
 
   // ─── Documents ──────────────────────────────────────────────────────────────

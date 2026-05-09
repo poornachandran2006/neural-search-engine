@@ -16,6 +16,7 @@ export default function ChatPage() {
     deleteChat,
     refreshChats,
     setActiveChatId,
+    submitFeedback,
   } = useChat();
 
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
@@ -143,6 +144,7 @@ export default function ChatPage() {
             onStreamDone={refreshChats}
             history={history}
             suggestions={suggestions}
+            onFeedback={submitFeedback}
           />
         </div>
       </main>

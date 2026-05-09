@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, JSON, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.postgres import Base
 
@@ -41,9 +41,25 @@ class Message(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     chat_id: Mapped[str] = mapped_column(String, ForeignKey("chats.id", ondelete="CASCADE"), nullable=False, index=True)
-    role: Mapped[str] = mapped_column(String(16), nullable=False)   # "user" | "assistant"
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
+    feedbacks: Mapped[list["Feedback"]] = relationship(
+        "Feedback", back_populates="message", cascade="all, delete-orphan"
+    )
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_id: Mapped[str] = mapped_column(
+        String, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)  # 1 = thumbs up, -1 = thumbs down
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    message: Mapped["Message"] = relationship("Message", back_populates="feedbacks")

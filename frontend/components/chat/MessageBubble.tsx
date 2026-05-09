@@ -4,18 +4,28 @@ import { useState } from "react";
 import type { Message } from "@/types";
 import { SourceCard } from "./SourceCard";
 
-interface Props { message: Message }
+interface Props {
+  message: Message;
+  onFeedback?: (messageId: string, rating: 1 | -1) => void;
+}
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, onFeedback }: Props) {
   const [showSources, setShowSources] = useState(false);
+  const [feedback, setFeedback] = useState<1 | -1 | null>(null);
   const isUser     = message.role === "user";
   const hasSources = message.sources && message.sources.length > 0;
+
+  const handleFeedback = (rating: 1 | -1) => {
+    if (feedback !== null) return; // already voted
+    setFeedback(rating);
+    onFeedback?.(message.id, rating);
+  };
 
   if (isUser) {
     return (
       <div className="animate-fade-in flex justify-end">
         <div
-          className="max-w-[72%] rounded-2xl rounded-br-sm px-4 py-2.5 text-lg leading-relaxed transition-all duration-200"
+          className="max-w-[72%] rounded-2xl rounded-br-sm px-4 py-2.5 text-lg leading-relaxed"
           style={{
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-default)",
@@ -32,7 +42,7 @@ export function MessageBubble({ message }: Props) {
     <div className="animate-fade-in flex flex-col gap-2">
       {/* Bubble */}
       <div
-        className="max-w-[88%] rounded-2xl rounded-tl-sm px-4 py-3 transition-all duration-200"
+        className="max-w-[88%] rounded-2xl rounded-tl-sm px-4 py-3"
         style={{
           background: "var(--bg-surface)",
           border: "1px solid var(--border-subtle)",
@@ -53,25 +63,80 @@ export function MessageBubble({ message }: Props) {
         </div>
       </div>
 
-      {/* Sources toggle */}
-      {hasSources && (
-        <div className="pl-1">
-          <button
-            onClick={() => setShowSources((v) => !v)}
-            className="flex items-center gap-1.5 font-mono text-xs py-1 bg-transparent border-none cursor-pointer transition-colors duration-150"
-            style={{ color: showSources ? "var(--accent-cyan)" : "var(--text-muted)" }}
-          >
-            <span className="transition-transform duration-150" style={{ display: "inline-block", transform: showSources ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
-            {message.sources!.length} source{message.sources!.length !== 1 ? "s" : ""} retrieved
-          </button>
+      {/* Footer row — sources + feedback */}
+      {!message.isStreaming && message.content && (
+        <div className="pl-1 flex items-center justify-between max-w-[88%]">
+          {/* Sources toggle */}
+          <div>
+            {hasSources && (
+              <button
+                onClick={() => setShowSources((v) => !v)}
+                className="flex items-center gap-1.5 font-mono text-xs py-1 bg-transparent border-none cursor-pointer transition-colors duration-150"
+                style={{ color: showSources ? "var(--accent-cyan)" : "var(--text-muted)" }}
+              >
+                <span
+                  className="transition-transform duration-150"
+                  style={{ display: "inline-block", transform: showSources ? "rotate(0deg)" : "rotate(-90deg)" }}
+                >
+                  ▾
+                </span>
+                {message.sources!.length} source{message.sources!.length !== 1 ? "s" : ""} retrieved
+              </button>
+            )}
+          </div>
 
-          {showSources && (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2 mt-2 animate-fade-in">
-              {message.sources!.map((chunk, i) => (
-                <SourceCard key={i} chunk={chunk} index={i} />
-              ))}
-            </div>
-          )}
+          {/* Feedback buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => handleFeedback(1)}
+              disabled={feedback !== null}
+              title="Good answer"
+              className="w-7 h-7 rounded-md flex items-center justify-center border-none cursor-pointer transition-all duration-150 disabled:cursor-default"
+              style={{
+                background: feedback === 1 ? "rgba(0,255,157,0.12)" : "transparent",
+                color: feedback === 1 ? "var(--accent-green)" : "var(--text-muted)",
+              }}
+              onMouseEnter={(e) => {
+                if (feedback === null)
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--accent-green)";
+              }}
+              onMouseLeave={(e) => {
+                if (feedback === null)
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+              }}
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => handleFeedback(-1)}
+              disabled={feedback !== null}
+              title="Bad answer"
+              className="w-7 h-7 rounded-md flex items-center justify-center border-none cursor-pointer transition-all duration-150 disabled:cursor-default"
+              style={{
+                background: feedback === -1 ? "rgba(255,77,109,0.12)" : "transparent",
+                color: feedback === -1 ? "var(--accent-red)" : "var(--text-muted)",
+              }}
+              onMouseEnter={(e) => {
+                if (feedback === null)
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--accent-red)";
+              }}
+              onMouseLeave={(e) => {
+                if (feedback === null)
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+              }}
+            >
+              ↓
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sources expanded */}
+      {showSources && hasSources && (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2 mt-1 animate-fade-in max-w-[88%]">
+          {message.sources!.map((chunk, i) => (
+            <SourceCard key={i} chunk={chunk} index={i} />
+          ))}
         </div>
       )}
     </div>

@@ -60,6 +60,14 @@ export function useChat() {
     api.chats.list().then(setChats).catch(console.error);
   }, []);
 
+  const submitFeedback = useCallback(
+    async (messageId: string, rating: 1 | -1) => {
+      if (!activeChatId) return;
+      await api.chats.submitFeedback(activeChatId, messageId, rating);
+    },
+    [activeChatId]
+  );
+
   return {
     chats,
     activeChatId,
@@ -72,5 +80,6 @@ export function useChat() {
     refreshChats,
     setMessages,
     setActiveChatId,
+    submitFeedback,
   };
 }

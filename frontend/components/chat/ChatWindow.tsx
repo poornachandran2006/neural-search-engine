@@ -14,6 +14,7 @@ interface Props {
   onStreamDone: () => void;
   history?: Array<{ role: string; content: string }>;
   suggestions?: string[];
+  onFeedback?: (messageId: string, rating: 1 | -1) => void;
 }
 
 export function ChatWindow({
@@ -24,6 +25,7 @@ export function ChatWindow({
   onStreamDone,
   history,
   suggestions = [],
+  onFeedback,
 }: Props) {
   const { state, send } = useStream();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -248,11 +250,12 @@ export function ChatWindow({
                     sources: state.sources,
                     isStreaming: state.status === "streaming",
                   }}
+                  onFeedback={onFeedback}
                 />
               </div>
             );
           }
-          return <MessageBubble key={msg.id || i} message={msg} />;
+          return <MessageBubble key={msg.id || i} message={msg} onFeedback={onFeedback} />;
         })}
 
         <div ref={bottomRef} />

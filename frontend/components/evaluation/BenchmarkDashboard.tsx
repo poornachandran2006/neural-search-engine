@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { BenchmarkResults, QuestionResult } from "@/types";
+import type { BenchmarkResults, QuestionResult, FeedbackSummary } from "@/types";
 
 function MetricCard({ label, value, description, color, glow }: {
   label: string; value: number; description: string; color: string; glow: string;
@@ -23,18 +23,65 @@ function MetricCard({ label, value, description, color, glow }: {
       <div className="font-mono text-4xl font-semibold leading-none mb-3" style={{ color }}>
         {pct}<span className="text-xl opacity-60">%</span>
       </div>
-      <div
-        className="h-px overflow-hidden rounded-full mb-2"
-        style={{ background: "var(--border-subtle)" }}
-      >
-        <div
-          className="h-full rounded-full animate-score-fill"
-          style={{ width: `${pct}%`, background: color }}
-        />
+      <div className="h-px overflow-hidden rounded-full mb-2" style={{ background: "var(--border-subtle)" }}>
+        <div className="h-full rounded-full animate-score-fill" style={{ width: `${pct}%`, background: color }} />
       </div>
       <div className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
         {description}
       </div>
+    </div>
+  );
+}
+
+function FeedbackCard({ summary }: { summary: FeedbackSummary }) {
+  const upPct = summary.total > 0 ? Math.round((summary.thumbs_up / summary.total) * 100) : 0;
+  return (
+    <div
+      className="animate-fade-in rounded-xl p-5"
+      style={{
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border-default)",
+      }}
+    >
+      <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
+        User Feedback
+      </div>
+      {summary.total === 0 ? (
+        <div className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+          No feedback yet — rate answers in the chat.
+        </div>
+      ) : (
+        <>
+          <div className="flex items-end gap-6 mb-3">
+            <div>
+              <div className="font-mono text-3xl font-semibold" style={{ color: "var(--accent-green)" }}>
+                {summary.thumbs_up}
+                <span className="text-base opacity-60 ml-1">↑</span>
+              </div>
+              <div className="font-mono text-xs mt-1" style={{ color: "var(--text-muted)" }}>thumbs up</div>
+            </div>
+            <div>
+              <div className="font-mono text-3xl font-semibold" style={{ color: "var(--accent-red)" }}>
+                {summary.thumbs_down}
+                <span className="text-base opacity-60 ml-1">↓</span>
+              </div>
+              <div className="font-mono text-xs mt-1" style={{ color: "var(--text-muted)" }}>thumbs down</div>
+            </div>
+            <div className="ml-auto text-right">
+              <div className="font-mono text-3xl font-semibold" style={{ color: "var(--accent-cyan)" }}>
+                {upPct}<span className="text-xl opacity-60">%</span>
+              </div>
+              <div className="font-mono text-xs mt-1" style={{ color: "var(--text-muted)" }}>positive rate</div>
+            </div>
+          </div>
+          <div className="h-px overflow-hidden rounded-full" style={{ background: "var(--border-subtle)" }}>
+            <div className="h-full rounded-full" style={{ width: `${upPct}%`, background: "var(--accent-green)" }} />
+          </div>
+          <div className="font-mono text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+            {summary.total} total ratings
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -47,10 +94,7 @@ function QuestionRow({ q, index }: { q: QuestionResult; index: number }) {
   return (
     <div
       className="animate-fade-in rounded-lg overflow-hidden transition-all duration-200"
-      style={{
-        border: "1px solid var(--border-subtle)",
-        animationDelay: `${index * 0.03}s`,
-      }}
+      style={{ border: "1px solid var(--border-subtle)", animationDelay: `${index * 0.03}s` }}
     >
       <button
         onClick={() => setExpanded((v) => !v)}
@@ -64,11 +108,7 @@ function QuestionRow({ q, index }: { q: QuestionResult; index: number }) {
         <span className="font-mono text-sm font-semibold w-10 text-right shrink-0" style={{ color: avgColor }}>{avg}%</span>
         <span
           className="text-xs transition-transform duration-150"
-          style={{
-            color: "var(--text-muted)",
-            display: "inline-block",
-            transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
-          }}
+          style={{ color: "var(--text-muted)", display: "inline-block", transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}
         >
           ▾
         </span>
@@ -77,10 +117,7 @@ function QuestionRow({ q, index }: { q: QuestionResult; index: number }) {
       {expanded && (
         <div
           className="px-4 py-3 flex flex-col gap-3 animate-fade-in"
-          style={{
-            borderTop: "1px solid var(--border-subtle)",
-            background: "var(--bg-surface)",
-          }}
+          style={{ borderTop: "1px solid var(--border-subtle)", background: "var(--bg-surface)" }}
         >
           <div className="flex gap-4 flex-wrap">
             {[
@@ -109,14 +146,20 @@ function QuestionRow({ q, index }: { q: QuestionResult; index: number }) {
 }
 
 export function BenchmarkDashboard() {
-  const [results, setResults] = useState<BenchmarkResults | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
+  const [results, setResults]       = useState<BenchmarkResults | null>(null);
+  const [feedback, setFeedback]     = useState<FeedbackSummary | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [running, setRunning]       = useState(false);
 
   const fetchResults = async () => {
     try {
-      setResults(await api.evaluation.results());
+      const [benchmarkData, feedbackData] = await Promise.all([
+        api.evaluation.results(),
+        api.chats.feedbackSummary(),
+      ]);
+      setResults(benchmarkData);
+      setFeedback(feedbackData);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No results yet");
@@ -198,14 +241,15 @@ export function BenchmarkDashboard() {
       {error && !loading && (
         <div
           className="rounded-lg px-4 py-4 font-mono text-xs"
-          style={{
-            background: "rgba(255,77,109,0.06)",
-            border: "1px solid rgba(255,77,109,0.20)",
-            color: "var(--accent-red)",
-          }}
+          style={{ background: "rgba(255,77,109,0.06)", border: "1px solid rgba(255,77,109,0.20)", color: "var(--accent-red)" }}
         >
           {error}
         </div>
+      )}
+
+      {/* Feedback card — always shown once loaded */}
+      {!loading && feedback && (
+        <FeedbackCard summary={feedback} />
       )}
 
       {results && (
@@ -235,10 +279,7 @@ export function BenchmarkDashboard() {
           </div>
 
           <div>
-            <div
-              className="font-mono text-xs uppercase tracking-widest mb-3"
-              style={{ color: "var(--text-muted)" }}
-            >
+            <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
               Per-question breakdown
             </div>
             <div className="flex flex-col gap-1.5">

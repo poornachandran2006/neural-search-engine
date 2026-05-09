@@ -35,9 +35,27 @@ async def list_chats(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/feedback/summary")
+async def feedback_summary(db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    from app.models.orm import Feedback
+    result = await db.execute(
+        select(Feedback.rating, func.count(Feedback.id).label("count"))
+        .group_by(Feedback.rating)
+    )
+    rows = result.all()
+    summary = {"thumbs_up": 0, "thumbs_down": 0, "total": 0}
+    for row in rows:
+        if row.rating == 1:
+            summary["thumbs_up"] = row.count
+        elif row.rating == -1:
+            summary["thumbs_down"] = row.count
+    summary["total"] = summary["thumbs_up"] + summary["thumbs_down"]
+    return summary
+
+
 @router.get("/{chat_id}/messages")
 async def get_messages(chat_id: str, db: AsyncSession = Depends(get_db)):
-    # Verify chat exists
     result = await db.execute(select(Chat).where(Chat.id == chat_id))
     chat = result.scalar_one_or_none()
     if not chat:
@@ -70,3 +88,28 @@ async def delete_chat(chat_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(chat)
     await db.commit()
     return {"deleted": chat_id}
+
+
+@router.post("/{chat_id}/messages/{message_id}/feedback")
+async def submit_feedback(
+    chat_id: str,
+    message_id: str,
+    rating: int,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.orm import Feedback
+    result = await db.execute(
+        select(Message).where(Message.id == message_id, Message.chat_id == chat_id)
+    )
+    msg = result.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="Rating must be 1 (up) or -1 (down)")
+
+    feedback = Feedback(message_id=message_id, rating=rating)
+    db.add(feedback)
+    await db.commit()
+    logger.info("feedback_saved", message_id=message_id, rating=rating)
+    return {"status": "ok", "message_id": message_id, "rating": rating}

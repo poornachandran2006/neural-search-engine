@@ -134,7 +134,9 @@ async def query_stream(
         if cached:
             logger.info("serving_from_cache", key=cache_key[:20])
             yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True, 'chat_id': chat_id})}\n\n"
-            yield f"data: {cached['answer']}\n\n"
+            # Send cached answer token by token split by sentences to avoid SSE frame breaks
+            safe_answer = cached["answer"].replace("\n", " ")
+            yield f"data: {safe_answer}\n\n"
             yield f"data: [SOURCES]{json.dumps(cached['sources'])}\n\n"
             yield "data: [DONE]\n\n"
 
