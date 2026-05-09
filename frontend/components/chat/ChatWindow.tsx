@@ -13,6 +13,7 @@ interface Props {
   onChatCreated: (chatId: string) => void;
   onStreamDone: () => void;
   history?: Array<{ role: string; content: string }>;
+  suggestions?: string[];
 }
 
 export function ChatWindow({
@@ -22,6 +23,7 @@ export function ChatWindow({
   onChatCreated,
   onStreamDone,
   history,
+  suggestions = [],
 }: Props) {
   const { state, send } = useStream();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -33,7 +35,6 @@ export function ChatWindow({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, state.content]);
 
-  // Track content as it streams so we have it when "done" fires
   useEffect(() => {
     if (state.status === "streaming") {
       finalContentRef.current = state.content;
@@ -45,7 +46,6 @@ export function ChatWindow({
     const curr = state.status;
     prevStatusRef.current = curr;
 
-    // Only fire when transitioning INTO "done" from "streaming"
     if (prev === "streaming" && curr === "done") {
       streamingMsgIdRef.current = null;
 
@@ -92,6 +92,7 @@ export function ChatWindow({
 
   const intentBadgeClass = state.meta ? `badge-${state.meta.intent}` : "";
   const isStreaming = state.status === "streaming";
+  const isEmpty = messages.length === 0 && state.status === "idle";
 
   return (
     <div
@@ -145,8 +146,8 @@ export function ChatWindow({
       )}
 
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-5 flex flex-col gap-4">
-        {messages.length === 0 && state.status === "idle" && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        {isEmpty && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-2"
               style={{
@@ -161,8 +162,42 @@ export function ChatWindow({
               className="text-base text-center max-w-[280px] leading-relaxed"
               style={{ color: "var(--text-muted)" }}
             >
-              Upload a document and ask anything about its contents.
+              {suggestions.length > 0
+                ? "Ask a question or try one of these:"
+                : "Upload a document and ask anything about its contents."}
             </p>
+
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-center max-w-[560px]">
+                {suggestions.slice(0, 5).map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(s)}
+                    className="text-left px-3 py-2 rounded-lg font-mono text-xs transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+                    style={{
+                      background: "var(--bg-elevated)",
+                      border: "1px solid var(--border-default)",
+                      color: "var(--text-secondary)",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor =
+                        "var(--accent-cyan)";
+                      (e.currentTarget as HTMLButtonElement).style.color =
+                        "var(--accent-cyan)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor =
+                        "var(--border-default)";
+                      (e.currentTarget as HTMLButtonElement).style.color =
+                        "var(--text-secondary)";
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -170,28 +205,42 @@ export function ChatWindow({
           if (msg.id === streamingMsgIdRef.current) {
             return (
               <div key={msg.id} className="flex flex-col gap-2">
-                {state.pipelineSteps.length > 0 && state.status === "streaming" && !state.content && (
-                  <div
-                    className="flex flex-col gap-1 px-3 py-2 rounded-lg font-mono text-xs"
-                    style={{
-                      background: "var(--bg-elevated)",
-                      border: "1px solid var(--border-subtle)",
-                      color: "var(--text-muted)",
-                      maxWidth: "320px",
-                    }}
-                  >
-                    {state.pipelineSteps.map((step) => (
-                      <div key={step.step} className="flex items-center gap-2">
-                        <span style={{ color: step.done ? "var(--accent-cyan)" : "var(--accent-amber)" }}>
-                          {step.done ? "✓" : "⟳"}
-                        </span>
-                        <span style={{ color: step.done ? "var(--text-secondary)" : "var(--text-primary)" }}>
-                          {step.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {state.pipelineSteps.length > 0 &&
+                  state.status === "streaming" &&
+                  !state.content && (
+                    <div
+                      className="flex flex-col gap-1 px-3 py-2 rounded-lg font-mono text-xs"
+                      style={{
+                        background: "var(--bg-elevated)",
+                        border: "1px solid var(--border-subtle)",
+                        color: "var(--text-muted)",
+                        maxWidth: "320px",
+                      }}
+                    >
+                      {state.pipelineSteps.map((step) => (
+                        <div key={step.step} className="flex items-center gap-2">
+                          <span
+                            style={{
+                              color: step.done
+                                ? "var(--accent-cyan)"
+                                : "var(--accent-amber)",
+                            }}
+                          >
+                            {step.done ? "✓" : "⟳"}
+                          </span>
+                          <span
+                            style={{
+                              color: step.done
+                                ? "var(--text-secondary)"
+                                : "var(--text-primary)",
+                            }}
+                          >
+                            {step.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 <MessageBubble
                   message={{
                     ...msg,

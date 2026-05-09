@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ChatWindow } from "@/components/chat/ChatWindow";
@@ -19,7 +19,16 @@ export default function ChatPage() {
   } = useChat();
 
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const isStreamingRef = useRef(false);
+
+  // Load suggestions from all ingested documents
+  useEffect(() => {
+    api.documents.list().then((docs) => {
+      const all = docs.flatMap((d) => d.suggestions ?? []);
+      setSuggestions(all.slice(0, 5));
+    }).catch(() => {});
+  }, []);
 
   // Build history from last 6 completed messages (no streaming placeholders)
   const history = localMessages
@@ -133,6 +142,7 @@ export default function ChatPage() {
             onChatCreated={handleChatCreated}
             onStreamDone={refreshChats}
             history={history}
+            suggestions={suggestions}
           />
         </div>
       </main>

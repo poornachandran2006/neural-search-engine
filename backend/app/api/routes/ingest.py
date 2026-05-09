@@ -52,6 +52,7 @@ async def ingest_document(
             upserted_count=result["upserted"],
             skipped_count=result["skipped"],
             sha256=result["sha256"],
+            suggestions=result.get("suggestions", []),
         )
         db.add(doc)
         await db.commit()
@@ -66,6 +67,7 @@ async def ingest_document(
             upserted=result["upserted"],
             skipped=result["skipped"],
             sha256=result["sha256"],
+            suggestions=result.get("suggestions", []),
             message=f"Ingested {result['upserted']} new chunks ({result['skipped']} duplicates skipped).",
         )
 

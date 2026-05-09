@@ -61,6 +61,7 @@ export interface Document {
   skipped_count: number;
   sha256: string;
   ingested_at: string;
+  suggestions: string[];
 }
 
 export interface IngestResponse {
@@ -71,6 +72,7 @@ export interface IngestResponse {
   skipped: number;
   sha256: string;
   message: string;
+  suggestions: string[];
 }
 
 // ─── Evaluation ───────────────────────────────────────────────────────────────

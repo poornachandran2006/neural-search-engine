@@ -1,9 +1,11 @@
 import pickle
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 
 from rank_bm25 import BM25Okapi
 from qdrant_client.models import PointStruct
+from groq import Groq
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -15,16 +17,10 @@ from app.services.ingestion.embedder import embed_texts
 
 logger = get_logger(__name__)
 
-# BM25 index lives on disk at this path
 BM25_INDEX_PATH = Path("/app/bm25_index.pkl")
 
 
 def _get_existing_hashes() -> set[str]:
-    """
-    Fetches all SHA-256 hashes currently stored in Qdrant.
-    Used for chunk-level deduplication before embedding.
-    Scrolls through all points — efficient because hash is in payload, not vector.
-    """
     client = get_qdrant_client()
     existing: set[str] = set()
     offset = None
@@ -48,16 +44,12 @@ def _get_existing_hashes() -> set[str]:
 
 
 def _upsert_chunks(chunks: list[TextChunk], embeddings: list[list[float]]) -> int:
-    """
-    Upserts chunks + embeddings into Qdrant as PointStructs.
-    Uses the SHA-256 hash converted to a UUID-style integer as the point ID.
-    """
     client = get_qdrant_client()
     now = datetime.now(timezone.utc).isoformat()
 
     points = [
         PointStruct(
-            id=int(chunk.sha256[:16], 16),  # first 16 hex chars → unique int ID
+            id=int(chunk.sha256[:16], 16),
             vector=embedding,
             payload={
                 "text": chunk.text,
@@ -76,17 +68,12 @@ def _upsert_chunks(chunks: list[TextChunk], embeddings: list[list[float]]) -> in
     client.upsert(
         collection_name=settings.qdrant_collection,
         points=points,
-        wait=True,  # wait for indexing before returning
+        wait=True,
     )
     return len(points)
 
 
 def rebuild_bm25_index() -> None:
-    """
-    Rebuilds the BM25 index from all chunks currently in Qdrant.
-    Persists to disk so it survives server restarts.
-    Called after every successful ingestion.
-    """
     client = get_qdrant_client()
     all_texts: list[str] = []
     all_ids: list[int] = []
@@ -125,16 +112,61 @@ def rebuild_bm25_index() -> None:
 
 
 def load_bm25_index() -> dict | None:
-    """Loads the BM25 index from disk. Returns None if not yet built."""
     if not BM25_INDEX_PATH.exists():
         return None
     return pickle.loads(BM25_INDEX_PATH.read_bytes())
 
 
+def _generate_suggestions(chunks: list[TextChunk]) -> list[str]:
+    """
+    Takes the first 5 chunks of the document, concatenates them,
+    and asks Groq to generate 5 questions answerable from this document.
+    Returns a list of 5 question strings.
+    Falls back to empty list on any error — never blocks ingestion.
+    """
+    try:
+        sample_chunks = chunks[:5]
+        context = "\n\n".join(c.text for c in sample_chunks)
+
+        prompt = f"""You are analyzing a document. Based on the following excerpt, generate exactly 5 specific questions that a user could ask and that can be answered from this document.
+
+Return ONLY a JSON array of 5 question strings. No explanation, no preamble, no markdown.
+
+Example format:
+["Question 1?", "Question 2?", "Question 3?", "Question 4?", "Question 5?"]
+
+Document excerpt:
+{context[:3000]}"""
+
+        client = Groq(api_key=settings.groq_api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=300,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        # Strip markdown fences if model adds them
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        suggestions = json.loads(raw.strip())
+
+        if isinstance(suggestions, list):
+            return [str(s) for s in suggestions[:5]]
+        return []
+
+    except Exception as e:
+        logger.warning("suggestion_generation_failed", error=str(e))
+        return []
+
+
 async def run_ingestion_pipeline(file_path: Path) -> dict:
     """
     Full ingestion pipeline for a single document.
-    Returns a summary dict with counts for the API response.
+    Returns a summary dict with counts and suggestions for the API response.
     """
     source_file = file_path.name
 
@@ -149,7 +181,7 @@ async def run_ingestion_pipeline(file_path: Path) -> dict:
     if not text_chunks:
         raise IngestError(f"Chunking produced no output for {source_file}")
 
-    # Step 3: Deduplicate — skip chunks already in Qdrant
+    # Step 3: Deduplicate
     existing_hashes = _get_existing_hashes()
     new_chunks = [c for c in text_chunks if c.sha256 not in existing_hashes]
     skipped = len(text_chunks) - len(new_chunks)
@@ -173,6 +205,11 @@ async def run_ingestion_pipeline(file_path: Path) -> dict:
         # Step 6: Rebuild BM25 index
         rebuild_bm25_index()
 
+    # Step 7: Generate suggestions from first 5 chunks (always uses all chunks, not just new)
+    logger.info("generating_suggestions", file=source_file)
+    suggestions = _generate_suggestions(text_chunks)
+    logger.info("suggestions_generated", count=len(suggestions))
+
     logger.info(
         "ingestion_complete",
         file=source_file,
@@ -187,4 +224,5 @@ async def run_ingestion_pipeline(file_path: Path) -> dict:
         "upserted": upserted,
         "skipped": skipped,
         "sha256": compute_file_sha256(file_path),
+        "suggestions": suggestions,
     }

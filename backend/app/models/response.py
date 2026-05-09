@@ -18,6 +18,7 @@ class IngestResponse(BaseModel):
     skipped: int
     sha256: str
     message: str
+    suggestions: list[str] = []
 
 
 class DocumentRecord(BaseModel):

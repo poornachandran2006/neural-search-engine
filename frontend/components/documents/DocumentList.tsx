@@ -46,32 +46,52 @@ export function DocumentList({ documents, loading }: { documents: Document[]; lo
       {documents.map((doc, i) => (
         <div
           key={doc.id}
-          className="animate-fade-in flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 hover:scale-[1.01]"
+          className="animate-fade-in flex flex-col gap-2 px-3 py-2.5 rounded-lg transition-all duration-200 hover:scale-[1.01]"
           style={{
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-subtle)",
             animationDelay: `${i * 0.05}s`,
           }}
         >
-          <FileIcon type={doc.file_type} />
-          <div className="flex-1 min-w-0">
-            <div className="text-md font-medium truncate" style={{ color: "var(--text-primary)" }}>
-              {doc.filename}
+          <div className="flex items-center gap-3">
+            <FileIcon type={doc.file_type} />
+            <div className="flex-1 min-w-0">
+              <div className="text-md font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                {doc.filename}
+              </div>
+              <div className="font-mono text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                {doc.chunk_count} chunks · {doc.upserted_count} new · ingested {new Date(doc.ingested_at).toLocaleDateString()}
+              </div>
             </div>
-            <div className="font-mono text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              {doc.chunk_count} chunks · {doc.upserted_count} new · ingested {new Date(doc.ingested_at).toLocaleDateString()}
+            <div
+              className="font-mono text-sm rounded-sm px-2 py-px shrink-0"
+              style={{
+                color: "var(--accent-cyan)",
+                background: "rgba(0,212,255,0.08)",
+                border: "1px solid rgba(0,212,255,0.20)",
+              }}
+            >
+              {doc.chunk_count}
             </div>
           </div>
-          <div
-            className="font-mono text-sm rounded-sm px-2 py-px shrink-0"
-            style={{
-              color: "var(--accent-cyan)",
-              background: "rgba(0,212,255,0.08)",
-              border: "1px solid rgba(0,212,255,0.20)",
-            }}
-          >
-            {doc.chunk_count}
-          </div>
+
+          {doc.suggestions && doc.suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pl-10">
+              {doc.suggestions.map((s, j) => (
+                <span
+                  key={j}
+                  className="font-mono text-xs px-2 py-1 rounded-md"
+                  style={{
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
