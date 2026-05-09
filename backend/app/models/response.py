@@ -19,6 +19,8 @@ class IngestResponse(BaseModel):
     sha256: str
     message: str
     suggestions: list[str] = []
+    job_id: str = ""
+    status: str = "done"
 
 
 class DocumentRecord(BaseModel):

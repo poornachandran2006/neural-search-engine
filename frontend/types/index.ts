@@ -73,6 +73,8 @@ export interface IngestResponse {
   sha256: string;
   message: string;
   suggestions: string[];
+  job_id?: string;
+  status?: string;
 }
 
 // ─── Evaluation ───────────────────────────────────────────────────────────────

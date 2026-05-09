@@ -33,6 +33,11 @@ export const api = {
 
   // ─── Documents ──────────────────────────────────────────────────────────────
 
+  ingest: {
+    status: (jobId: string) =>
+      request<{ status: string; stage: string; detail: string; result: unknown; error: string | null }>(`/ingest/status/${jobId}`),
+  },
+
   documents: {
     list: () => request<Document[]>("/documents"),
 

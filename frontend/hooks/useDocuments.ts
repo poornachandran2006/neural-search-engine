@@ -44,5 +44,23 @@ export function useDocuments() {
     [fetchDocuments]
   );
 
-  return { documents, loading, uploading, error, upload, refresh: fetchDocuments };
+  const pollIngestionStatus = useCallback(async (jobId: string): Promise<void> => {
+    return new Promise((resolve) => {
+      const interval = setInterval(async () => {
+        try {
+          const status = await api.ingest.status(jobId);
+          if (status.status === "done" || status.status === "error") {
+            clearInterval(interval);
+            await fetchDocuments();
+            resolve();
+          }
+        } catch {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 1000);
+    });
+  }, [fetchDocuments]);
+
+  return { documents, loading, uploading, error, upload, pollIngestionStatus, refresh: fetchDocuments };
 }

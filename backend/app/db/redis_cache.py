@@ -65,3 +65,20 @@ async def close_redis() -> None:
     if _redis_client:
         await _redis_client.aclose()
         _redis_client = None
+
+async def set_job_progress(job_id: str, data: dict) -> None:
+    try:
+        client = get_redis_client()
+        await client.setex(f"job:{job_id}", 3600, json.dumps(data))
+    except Exception as e:
+        logger.warning("job_progress_set_failed", error=str(e))
+
+
+async def get_job_progress(job_id: str) -> dict | None:
+    try:
+        client = get_redis_client()
+        value = await client.get(f"job:{job_id}")
+        return json.loads(value) if value else None
+    except Exception as e:
+        logger.warning("job_progress_get_failed", error=str(e))
+        return None

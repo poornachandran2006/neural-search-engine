@@ -6,7 +6,7 @@ import { UploadZone } from "@/components/documents/UploadZone";
 import { DocumentList } from "@/components/documents/DocumentList";
 
 export default function DocumentsPage() {
-  const { documents, loading, uploading, upload } = useDocuments();
+  const { documents, loading, uploading, upload, pollIngestionStatus } = useDocuments();
   const totalChunks = documents.reduce((s, d) => s + d.chunk_count, 0);
 
   return (
@@ -41,7 +41,7 @@ export default function DocumentsPage() {
             >
               Ingest new document
             </div>
-            <UploadZone onUpload={upload} uploading={uploading} />
+            <UploadZone onUpload={upload} onPollStatus={pollIngestionStatus} uploading={uploading} />
           </div>
 
           {/* List */}

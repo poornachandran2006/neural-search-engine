@@ -2,6 +2,7 @@ import pickle
 import json
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Callable
 
 from rank_bm25 import BM25Okapi
 from qdrant_client.models import PointStruct
@@ -101,12 +102,7 @@ def rebuild_bm25_index() -> None:
     tokenized = [text.lower().split() for text in all_texts]
     bm25 = BM25Okapi(tokenized)
 
-    index_data = {
-        "bm25": bm25,
-        "texts": all_texts,
-        "ids": all_ids,
-    }
-
+    index_data = {"bm25": bm25, "texts": all_texts, "ids": all_ids}
     BM25_INDEX_PATH.write_bytes(pickle.dumps(index_data))
     logger.info("bm25_index_rebuilt", total_docs=len(all_texts))
 
@@ -118,12 +114,6 @@ def load_bm25_index() -> dict | None:
 
 
 def _generate_suggestions(chunks: list[TextChunk]) -> list[str]:
-    """
-    Takes the first 5 chunks of the document, concatenates them,
-    and asks Groq to generate 5 questions answerable from this document.
-    Returns a list of 5 question strings.
-    Falls back to empty list on any error — never blocks ingestion.
-    """
     try:
         sample_chunks = chunks[:5]
         context = "\n\n".join(c.text for c in sample_chunks)
@@ -147,7 +137,6 @@ Document excerpt:
         )
 
         raw = response.choices[0].message.content.strip()
-        # Strip markdown fences if model adds them
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -163,25 +152,33 @@ Document excerpt:
         return []
 
 
-async def run_ingestion_pipeline(file_path: Path) -> dict:
+async def run_ingestion_pipeline(
+    file_path: Path,
+    progress_callback: Callable[[str, str], None] | None = None,
+) -> dict:
     """
     Full ingestion pipeline for a single document.
-    Returns a summary dict with counts and suggestions for the API response.
+    progress_callback(stage, detail) is called at each step so the
+    caller can write progress to Redis for the frontend to poll.
     """
     source_file = file_path.name
 
-    # Step 1: Load raw pages
+    async def _progress(stage: str, detail: str = "") -> None:
+        if progress_callback:
+            await progress_callback(stage, detail)
+
     logger.info("ingestion_started", file=source_file)
+    await _progress("loading", f"Reading {source_file}")
+
     raw_chunks = load_document(file_path)
     if not raw_chunks:
         raise IngestError(f"No text could be extracted from {source_file}")
 
-    # Step 2: Chunk into 512-token pieces
+    await _progress("chunking", f"Splitting into 512-token chunks")
     text_chunks = chunk_raw_pages(raw_chunks)
     if not text_chunks:
         raise IngestError(f"Chunking produced no output for {source_file}")
 
-    # Step 3: Deduplicate
     existing_hashes = _get_existing_hashes()
     new_chunks = [c for c in text_chunks if c.sha256 not in existing_hashes]
     skipped = len(text_chunks) - len(new_chunks)
@@ -195,21 +192,20 @@ async def run_ingestion_pipeline(file_path: Path) -> dict:
 
     upserted = 0
     if new_chunks:
-        # Step 4: Embed new chunks
+        await _progress("embedding", f"Generating embeddings for {len(new_chunks)} chunks")
         texts = [c.text for c in new_chunks]
         embeddings = embed_texts(texts)
 
-        # Step 5: Upsert to Qdrant
+        await _progress("storing", f"Upserting to Qdrant and rebuilding BM25 index")
         upserted = _upsert_chunks(new_chunks, embeddings)
-
-        # Step 6: Rebuild BM25 index
         rebuild_bm25_index()
 
-    # Step 7: Generate suggestions from first 5 chunks (always uses all chunks, not just new)
+    await _progress("suggestions", "Generating suggested questions")
     logger.info("generating_suggestions", file=source_file)
     suggestions = _generate_suggestions(text_chunks)
     logger.info("suggestions_generated", count=len(suggestions))
 
+    await _progress("done", "Ingestion complete")
     logger.info(
         "ingestion_complete",
         file=source_file,
