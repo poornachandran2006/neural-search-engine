@@ -62,6 +62,7 @@ export const api = {
     results: () => request<BenchmarkResults>("/evaluation/results"),
     run: () => request<{ status: string; message: string }>("/evaluation/run", { method: "POST" }),
     status: () => request<{ running: boolean }>("/evaluation/status"),
+    analytics: () => request<import("@/types").AnalyticsData>("/evaluation/analytics"),
   },
 
   // ─── Stream URL (used by useStream hook) ────────────────────────────────────

@@ -45,6 +45,10 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_hit: Mapped[bool | None] = mapped_column(nullable=True)
+    retrieval_score: Mapped[float | None] = mapped_column(nullable=True)
+    intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
     feedbacks: Mapped[list["Feedback"]] = relationship(

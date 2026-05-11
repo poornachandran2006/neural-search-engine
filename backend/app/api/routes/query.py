@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -85,6 +86,8 @@ async def query_stream(
     db.add(user_msg)
     await db.commit()
 
+    query_start_time = time.monotonic()
+
     async def event_stream():
         nonlocal db
 
@@ -145,6 +148,10 @@ async def query_stream(
                 role="assistant",
                 content=cached["answer"],
                 sources=cached["sources"],
+                latency_ms=int((time.monotonic() - query_start_time) * 1000),
+                cache_hit=True,
+                retrieval_score=float(sum(c.get("rerank_score", 0) for c in chunks) / len(chunks)) if chunks else None,
+                intent=intent,
             )
             db.add(assistant_msg)
             await db.commit()
@@ -193,6 +200,10 @@ async def query_stream(
             role="assistant",
             content=full_answer,
             sources=sources,
+            latency_ms=int((time.monotonic() - query_start_time) * 1000),
+            cache_hit=False,
+            retrieval_score=float(sum(c.get("rerank_score", 0) for c in chunks) / len(chunks)) if chunks else None,
+            intent=intent,
         )
         db.add(assistant_msg)
         await db.commit()

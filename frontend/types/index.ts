@@ -113,3 +113,14 @@ export interface FeedbackSummary {
   thumbs_down: number;
   total: number;
 }
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export interface AnalyticsData {
+  total_queries: number;
+  avg_latency_ms: number;
+  avg_retrieval_score: number;
+  cache_hit_rate: number;
+  cache_hits: number;
+  intent_distribution: Record<string, number>;
+}

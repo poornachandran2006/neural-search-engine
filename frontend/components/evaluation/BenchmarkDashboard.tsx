@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { BenchmarkResults, QuestionResult, FeedbackSummary } from "@/types";
+import type { BenchmarkResults, QuestionResult, FeedbackSummary, AnalyticsData } from "@/types";
 
 function MetricCard({ label, value, description, color, glow }: {
   label: string; value: number; description: string; color: string; glow: string;
@@ -36,13 +36,7 @@ function MetricCard({ label, value, description, color, glow }: {
 function FeedbackCard({ summary }: { summary: FeedbackSummary }) {
   const upPct = summary.total > 0 ? Math.round((summary.thumbs_up / summary.total) * 100) : 0;
   return (
-    <div
-      className="animate-fade-in rounded-xl p-5"
-      style={{
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--border-default)",
-      }}
-    >
+    <div className="animate-fade-in rounded-xl p-5" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}>
       <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>
         User Feedback
       </div>
@@ -55,15 +49,13 @@ function FeedbackCard({ summary }: { summary: FeedbackSummary }) {
           <div className="flex items-end gap-6 mb-3">
             <div>
               <div className="font-mono text-3xl font-semibold" style={{ color: "var(--accent-green)" }}>
-                {summary.thumbs_up}
-                <span className="text-base opacity-60 ml-1">↑</span>
+                {summary.thumbs_up}<span className="text-base opacity-60 ml-1">↑</span>
               </div>
               <div className="font-mono text-xs mt-1" style={{ color: "var(--text-muted)" }}>thumbs up</div>
             </div>
             <div>
               <div className="font-mono text-3xl font-semibold" style={{ color: "var(--accent-red)" }}>
-                {summary.thumbs_down}
-                <span className="text-base opacity-60 ml-1">↓</span>
+                {summary.thumbs_down}<span className="text-base opacity-60 ml-1">↓</span>
               </div>
               <div className="font-mono text-xs mt-1" style={{ color: "var(--text-muted)" }}>thumbs down</div>
             </div>
@@ -77,10 +69,103 @@ function FeedbackCard({ summary }: { summary: FeedbackSummary }) {
           <div className="h-px overflow-hidden rounded-full" style={{ background: "var(--border-subtle)" }}>
             <div className="h-full rounded-full" style={{ width: `${upPct}%`, background: "var(--accent-green)" }} />
           </div>
-          <div className="font-mono text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-            {summary.total} total ratings
-          </div>
+          <div className="font-mono text-xs mt-2" style={{ color: "var(--text-muted)" }}>{summary.total} total ratings</div>
         </>
+      )}
+    </div>
+  );
+}
+
+const INTENT_COLORS: Record<string, string> = {
+  content:        "var(--accent-cyan)",
+  metadata:       "var(--accent-green)",
+  comparison:     "var(--accent-amber)",
+  summarization:  "var(--accent-red)",
+};
+
+function AnalyticsSection({ data }: { data: AnalyticsData }) {
+  const totalIntents = Object.values(data.intent_distribution).reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="flex flex-col gap-4 animate-fade-in">
+      <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+        Query Analytics
+      </div>
+
+      {/* Stat cards row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Total Queries",      value: data.total_queries.toString(),                      color: "var(--accent-cyan)"  },
+          { label: "Avg Latency",        value: `${Math.round(data.avg_latency_ms)}ms`,             color: "var(--accent-amber)" },
+          { label: "Cache Hit Rate",     value: `${Math.round(data.cache_hit_rate * 100)}%`,        color: "var(--accent-green)" },
+          { label: "Avg Rerank Score",   value: data.avg_retrieval_score.toFixed(3),                color: "var(--text-primary)" },
+        ].map(({ label, value, color }) => (
+          <div
+            key={label}
+            className="rounded-xl p-4"
+            style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}
+          >
+            <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              {label}
+            </div>
+            <div className="font-mono text-2xl font-semibold" style={{ color }}>
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Intent distribution */}
+      {totalIntents > 0 && (
+        <div
+          className="rounded-xl p-5"
+          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}
+        >
+          <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "var(--text-muted)" }}>
+            Intent Distribution
+          </div>
+
+          {/* Stacked bar */}
+          <div className="flex h-3 rounded-full overflow-hidden mb-4" style={{ background: "var(--border-subtle)" }}>
+            {Object.entries(data.intent_distribution).map(([intent, count]) => (
+              <div
+                key={intent}
+                style={{
+                  width: `${(count / totalIntents) * 100}%`,
+                  background: INTENT_COLORS[intent] ?? "var(--text-muted)",
+                  transition: "width 0.6s ease",
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-4">
+            {Object.entries(data.intent_distribution).map(([intent, count]) => (
+              <div key={intent} className="flex items-center gap-2">
+                <div
+                  className="w-2.5 h-2.5 rounded-sm shrink-0"
+                  style={{ background: INTENT_COLORS[intent] ?? "var(--text-muted)" }}
+                />
+                <span className="font-mono text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {intent}
+                </span>
+                <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                  {count} ({Math.round((count / totalIntents) * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.total_queries === 0 && (
+        <div
+          className="rounded-lg px-4 py-3 font-mono text-xs"
+          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}
+        >
+          No query data yet — send some questions in the chat to populate analytics.
+        </div>
       )}
     </div>
   );
@@ -146,20 +231,23 @@ function QuestionRow({ q, index }: { q: QuestionResult; index: number }) {
 }
 
 export function BenchmarkDashboard() {
-  const [results, setResults]       = useState<BenchmarkResults | null>(null);
-  const [feedback, setFeedback]     = useState<FeedbackSummary | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState<string | null>(null);
-  const [running, setRunning]       = useState(false);
+  const [results,   setResults]   = useState<BenchmarkResults | null>(null);
+  const [feedback,  setFeedback]  = useState<FeedbackSummary | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [running,   setRunning]   = useState(false);
 
   const fetchResults = async () => {
     try {
-      const [benchmarkData, feedbackData] = await Promise.all([
+      const [benchmarkData, feedbackData, analyticsData] = await Promise.all([
         api.evaluation.results(),
         api.chats.feedbackSummary(),
+        api.evaluation.analytics(),
       ]);
       setResults(benchmarkData);
       setFeedback(feedbackData);
+      setAnalytics(analyticsData);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No results yet");
@@ -168,8 +256,22 @@ export function BenchmarkDashboard() {
     }
   };
 
+  // Analytics loads independently so the page shows even without benchmark results
+  const fetchAnalytics = async () => {
+    try {
+      const data = await api.evaluation.analytics();
+      console.log("analytics data:", data);
+      setAnalytics(data);
+    } catch (e) {
+      console.error("analytics fetch failed:", e);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
+      // Always load analytics immediately
+      fetchAnalytics();
+
       try {
         const { running: isRunning } = await api.evaluation.status();
         if (isRunning) {
@@ -228,6 +330,9 @@ export function BenchmarkDashboard() {
         </button>
       </div>
 
+      {/* Analytics — always shown, loads independently */}
+      {analytics && <AnalyticsSection data={analytics} />}
+
       {loading && (
         <div className="flex justify-center py-10">
           <span className="inline-flex gap-1.5 items-center">
@@ -247,35 +352,15 @@ export function BenchmarkDashboard() {
         </div>
       )}
 
-      {/* Feedback card — always shown once loaded */}
-      {!loading && feedback && (
-        <FeedbackCard summary={feedback} />
-      )}
+      {/* Feedback card */}
+      {!loading && feedback && <FeedbackCard summary={feedback} />}
 
       {results && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <MetricCard
-              label="Recall @ 5"
-              value={results.metrics.recall_at_5}
-              description="Correct chunk in top-5 retrieved"
-              color="var(--accent-cyan)"
-              glow="0 0 24px rgba(0,212,255,0.08)"
-            />
-            <MetricCard
-              label="Faithfulness"
-              value={results.metrics.faithfulness}
-              description="Answer grounded in context"
-              color="var(--accent-green)"
-              glow="0 0 24px rgba(0,255,157,0.08)"
-            />
-            <MetricCard
-              label="Answer Relevancy"
-              value={results.metrics.answer_relevancy}
-              description="Answer addresses the question"
-              color="var(--accent-amber)"
-              glow="0 0 24px rgba(255,179,71,0.08)"
-            />
+            <MetricCard label="Recall @ 5"       value={results.metrics.recall_at_5}       description="Correct chunk in top-5 retrieved" color="var(--accent-cyan)"  glow="0 0 24px rgba(0,212,255,0.08)"  />
+            <MetricCard label="Faithfulness"      value={results.metrics.faithfulness}      description="Answer grounded in context"       color="var(--accent-green)" glow="0 0 24px rgba(0,255,157,0.08)"  />
+            <MetricCard label="Answer Relevancy"  value={results.metrics.answer_relevancy}  description="Answer addresses the question"    color="var(--accent-amber)" glow="0 0 24px rgba(255,179,71,0.08)" />
           </div>
 
           <div>
