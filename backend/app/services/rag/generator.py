@@ -51,3 +51,22 @@ async def stream_answer(
         logger.error("generation_failed", error=str(e))
         yield f"data: Error generating response: {str(e)}\n\n"
         yield "data: [DONE]\n\n"
+
+def compute_confidence(chunks: list[dict]) -> str:
+    """
+    Computes a confidence level from rerank scores.
+    High / Medium / Low — no LLM call needed.
+    """
+    if not chunks:
+        return "low"
+
+    scores = [float(c.get("rerank_score", 0.0)) for c in chunks]
+    top_score = max(scores)
+    avg_score = sum(scores) / len(scores)
+    chunk_count = len(chunks)
+
+    if top_score >= 0.5 and avg_score >= 0.3 and chunk_count >= 3:
+        return "high"
+    if top_score >= 0.2 or avg_score >= 0.15:
+        return "medium"
+    return "low"

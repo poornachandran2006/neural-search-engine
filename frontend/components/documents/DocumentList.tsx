@@ -75,6 +75,15 @@ export function DocumentList({ documents, loading }: { documents: Document[]; lo
             </div>
           </div>
 
+          {doc.summary && (
+            <div
+              className="font-mono text-xs leading-relaxed pl-10 pr-2"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              {doc.summary}
+            </div>
+          )}
+
           {doc.suggestions && doc.suggestions.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pl-10">
               {doc.suggestions.map((s, j) => (

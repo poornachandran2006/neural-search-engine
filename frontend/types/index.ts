@@ -33,6 +33,7 @@ export interface StreamMeta {
   source_files: string[];
   chat_id?: string;
   cached?: boolean;
+  answer_confidence?: "high" | "medium" | "low";
 }
 
 export interface PipelineStatus {
@@ -62,6 +63,7 @@ export interface Document {
   sha256: string;
   ingested_at: string;
   suggestions: string[];
+  summary: string;
 }
 
 export interface IngestResponse {
@@ -73,6 +75,7 @@ export interface IngestResponse {
   sha256: string;
   message: string;
   suggestions: string[];
+  summary?: string;
   job_id?: string;
   status?: string;
 }

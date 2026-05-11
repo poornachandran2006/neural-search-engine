@@ -106,6 +106,7 @@ async def _run_ingestion_background(
                 skipped_count=result["skipped"],
                 sha256=result["sha256"],
                 suggestions=result.get("suggestions", []),
+                summary=result.get("summary", ""),
             )
             db.add(doc)
             await db.commit()
@@ -123,6 +124,7 @@ async def _run_ingestion_background(
                 "skipped": result["skipped"],
                 "sha256": result["sha256"],
                 "suggestions": result.get("suggestions", []),
+                "summary": result.get("summary", ""),
             },
             "error": None,
         })

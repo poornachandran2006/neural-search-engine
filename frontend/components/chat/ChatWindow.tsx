@@ -108,6 +108,16 @@ export function ChatWindow({
               map-reduce
             </span>
           )}
+          {state.meta.answer_confidence && (
+            <span className="font-mono text-xs rounded-sm px-2 py-px shrink-0"
+              style={{
+                color: state.meta.answer_confidence === "high" ? "var(--accent-green)" : state.meta.answer_confidence === "medium" ? "var(--accent-cyan)" : "var(--accent-red)",
+                background: state.meta.answer_confidence === "high" ? "rgba(0,255,157,0.08)" : state.meta.answer_confidence === "medium" ? "rgba(0,212,255,0.08)" : "rgba(255,77,109,0.06)",
+                border: state.meta.answer_confidence === "high" ? "1px solid rgba(0,255,157,0.20)" : state.meta.answer_confidence === "medium" ? "1px solid rgba(0,212,255,0.20)" : "1px solid rgba(255,77,109,0.20)",
+              }}>
+              {state.meta.answer_confidence} confidence
+            </span>
+          )}
           <span className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-muted)" }}>
             → {state.meta.rewritten_query}
           </span>

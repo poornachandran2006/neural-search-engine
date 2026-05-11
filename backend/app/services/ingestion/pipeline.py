@@ -151,6 +151,36 @@ Document excerpt:
         logger.warning("suggestion_generation_failed", error=str(e))
         return []
 
+def _generate_summary(chunks: list[TextChunk]) -> str:
+    """
+    Generates a 3-sentence summary of the document from its first 5 chunks.
+    Returns empty string on failure — never raises.
+    """
+    try:
+        sample_chunks = chunks[:5]
+        context = "\n\n".join(c.text for c in sample_chunks)
+
+        prompt = f"""You are summarizing a document. Based on the following excerpt, write exactly 3 sentences that describe what this document is about, who it is for, and what key information it contains.
+
+Return ONLY the 3-sentence summary. No bullet points, no headings, no extra text.
+
+Document excerpt:
+{context[:3000]}"""
+
+        client = Groq(api_key=settings.groq_api_key)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=200,
+        )
+
+        summary = response.choices[0].message.content.strip()
+        return summary
+
+    except Exception as e:
+        logger.warning("summary_generation_failed", error=str(e))
+        return ""
 
 async def run_ingestion_pipeline(
     file_path: Path,
@@ -205,6 +235,11 @@ async def run_ingestion_pipeline(
     suggestions = _generate_suggestions(text_chunks)
     logger.info("suggestions_generated", count=len(suggestions))
 
+    await _progress("summarizing", "Generating document summary")
+    logger.info("generating_summary", file=source_file)
+    summary = _generate_summary(text_chunks)
+    logger.info("summary_generated", chars=len(summary))
+
     await _progress("done", "Ingestion complete")
     logger.info(
         "ingestion_complete",
@@ -221,4 +256,5 @@ async def run_ingestion_pipeline(
         "skipped": skipped,
         "sha256": compute_file_sha256(file_path),
         "suggestions": suggestions,
+        "summary": summary,
     }

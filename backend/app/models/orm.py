@@ -21,6 +21,7 @@ class Document(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     suggestions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Chat(Base):

@@ -26,6 +26,7 @@ async def list_documents(db: AsyncSession = Depends(get_db)):
             "sha256": d.sha256,
             "ingested_at": d.ingested_at,
             "suggestions": d.suggestions or [],
+            "summary": d.summary or "",
         }
         for d in docs
     ]
@@ -48,4 +49,5 @@ async def get_document(document_id: str, db: AsyncSession = Depends(get_db)):
         "sha256": doc.sha256,
         "ingested_at": doc.ingested_at,
         "suggestions": doc.suggestions or [],
+        "summary": doc.summary or "",
     }

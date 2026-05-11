@@ -14,6 +14,7 @@ from app.services.query.pipeline import run_query_pipeline
 from app.services.rag.generator import stream_answer
 from app.services.rag.map_reduce import stream_map_reduce
 from app.services.rag.safety import has_sufficient_context, stream_fallback
+from app.services.rag.generator import compute_confidence
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/query", tags=["query"])
@@ -136,7 +137,7 @@ async def query_stream(
 
         if cached:
             logger.info("serving_from_cache", key=cache_key[:20])
-            yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True, 'chat_id': chat_id})}\n\n"
+            yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True, 'chat_id': chat_id, 'answer_confidence': compute_confidence(chunks)})}\n\n"
             # Send cached answer token by token split by sentences to avoid SSE frame breaks
             safe_answer = cached["answer"].replace("\n", " ")
             yield f"data: {safe_answer}\n\n"
@@ -170,12 +171,14 @@ async def query_stream(
             await db.commit()
             return
 
+        answer_confidence = compute_confidence(chunks)
         meta = {
             "intent": intent,
             "rewritten_query": rewritten,
             "is_multi_doc": is_multi_doc,
             "source_files": pipeline_result["source_files"],
             "chat_id": chat_id,
+            "answer_confidence": answer_confidence,
         }
         yield f"data: [META]{json.dumps(meta)}\n\n"
 
