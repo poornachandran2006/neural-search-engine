@@ -5,7 +5,7 @@
 <br/>
 
 <p>
-  [![CI](https://github.com/poornachandran2006/neural-search-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/poornachandran2006/neural-search-engine/actions/workflows/ci.yml)
+  <a href="https://github.com/poornachandran2006/neural-search-engine/actions/workflows/ci.yml"><img src="https://github.com/poornachandran2006/neural-search-engine/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
   <img src="https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi&logoColor=white"/>
   <img src="https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=nextdotjs&logoColor=white"/>
@@ -1088,3 +1088,6 @@ Specialising in AI Systems · RAG · Full-Stack Development
 ---
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:00d4ff,100:6366f1&height=80&section=footer" />
+
+
+
