@@ -16,8 +16,8 @@ _groq_client = Groq(api_key=settings.groq_api_key)
 QUESTIONS_PATH = Path("/app/evaluation/dataset/questions.json")
 RESULTS_PATH = Path("/app/evaluation/results/benchmark_results.json")
 
-# Semaphore: max 3 questions running concurrently (respects Groq rate limits)
-_SEM = asyncio.Semaphore(3)
+# Sequential execution with delays — Groq free tier is 30 RPM
+_DELAY_BETWEEN_QUESTIONS = 8.0  # seconds between questions
 
 
 # ─── Metric 1: Recall@5 ──────────────────────────────────────────────────────
@@ -53,13 +53,7 @@ Respond with ONLY a JSON object: {{"score": <float between 0.0 and 1.0>, "reason
 No explanation outside the JSON."""
 
     try:
-        response = _groq_client.chat.completions.create(
-            model=settings.groq_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=128,
-        )
-        raw = response.choices[0].message.content.strip()
+        raw = _groq_with_retry([{"role": "user", "content": prompt}], 128)
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -90,13 +84,7 @@ Respond with ONLY a JSON object: {{"score": <float between 0.0 and 1.0>, "reason
 No explanation outside the JSON."""
 
     try:
-        response = _groq_client.chat.completions.create(
-            model=settings.groq_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=128,
-        )
-        raw = response.choices[0].message.content.strip()
+        raw = _groq_with_retry([{"role": "user", "content": prompt}], 128)
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -106,83 +94,92 @@ No explanation outside the JSON."""
         logger.error("relevancy_judge_failed", error=str(e))
         return 0.5
 
+def _groq_with_retry(messages: list, max_tokens: int = 128, retries: int = 4) -> str:
+    """Call Groq with exponential backoff on rate limit errors."""
+    for attempt in range(retries):
+        try:
+            resp = _groq_client.chat.completions.create(
+                model=settings.groq_model,
+                messages=messages,
+                temperature=0.0,
+                max_tokens=max_tokens,
+                stream=False,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            if "rate_limit" in str(e).lower() and attempt < retries - 1:
+                wait = 10 * (attempt + 1)
+                logger.warning("groq_rate_limit_retry", attempt=attempt+1, wait=wait)
+                time.sleep(wait)
+            else:
+                raise
+    return ""
 
 # ─── Single question evaluator ────────────────────────────────────────────────
 
 async def _evaluate_one(q: dict, index: int, total: int) -> dict:
-    """Evaluate a single question with concurrency control."""
-    async with _SEM:
-        qid = q["id"]
-        question = q["question"]
-        keywords = q.get("relevant_chunk_keywords", [])
+    """Evaluate a single question sequentially."""
+    qid = q["id"]
+    question = q["question"]
+    keywords = q.get("relevant_chunk_keywords", [])
 
-        logger.info("evaluating_question", id=qid, n=f"{index+1}/{total}")
+    logger.info("evaluating_question", id=qid, n=f"{index+1}/{total}")
 
-        try:
-            pipeline_result = await run_query_pipeline(question)
-            chunks = pipeline_result["chunks"]
+    try:
+        pipeline_result = await run_query_pipeline(question)
+        chunks = pipeline_result["chunks"]
 
-            context = "\n\n".join(
-                c.get("text", c.get("text_preview", "")) for c in chunks
-            )
+        context = "\n\n".join(
+            c.get("text", c.get("text_preview", "")) for c in chunks
+        )
 
-            from app.services.rag.prompt_builder import build_single_doc_prompt
-            messages = build_single_doc_prompt(question, chunks)
+        from app.services.rag.prompt_builder import build_single_doc_prompt
+        messages = build_single_doc_prompt(question, chunks)
 
-            # Run answer generation in thread (sync Groq client)
-            def _gen_answer():
-                resp = _groq_client.chat.completions.create(
-                    model=settings.groq_model,
-                    messages=messages,
-                    temperature=0.0,
-                    max_tokens=512,
-                    stream=False,
-                )
-                return resp.choices[0].message.content.strip()
+        answer = await asyncio.to_thread(
+            _groq_with_retry, messages, 512
+        )
 
-            answer = await asyncio.to_thread(_gen_answer)
+        faithfulness, relevancy = await asyncio.gather(
+            asyncio.to_thread(compute_faithfulness, context, answer),
+            asyncio.to_thread(compute_answer_relevancy, question, answer),
+        )
 
-            # Run both judges concurrently in threads
-            faithfulness, relevancy = await asyncio.gather(
-                asyncio.to_thread(compute_faithfulness, context, answer),
-                asyncio.to_thread(compute_answer_relevancy, question, answer),
-            )
+        recall = compute_recall_at_5(chunks, keywords)
 
-            recall = compute_recall_at_5(chunks, keywords)
+        logger.info(
+            "question_evaluated",
+            id=qid,
+            recall=recall,
+            faithfulness=round(faithfulness, 3),
+            relevancy=round(relevancy, 3),
+        )
 
-            logger.info(
-                "question_evaluated",
-                id=qid,
-                recall=recall,
-                faithfulness=round(faithfulness, 3),
-                relevancy=round(relevancy, 3),
-            )
+        return {
+            "id": qid,
+            "question": question,
+            "answer": answer,
+            "recall_at_5": recall,
+            "faithfulness": round(faithfulness, 4),
+            "answer_relevancy": round(relevancy, 4),
+            "chunks_retrieved": len(chunks),
+            "source_files": pipeline_result["source_files"],
+            "intent": pipeline_result["intent"],
+        }
 
-            return {
-                "id": qid,
-                "question": question,
-                "answer": answer,
-                "recall_at_5": recall,
-                "faithfulness": round(faithfulness, 4),
-                "answer_relevancy": round(relevancy, 4),
-                "chunks_retrieved": len(chunks),
-                "source_files": pipeline_result["source_files"],
-                "intent": pipeline_result["intent"],
-            }
-
-        except Exception as e:
-            logger.error("question_failed", id=qid, error=str(e))
-            return {
-                "id": qid,
-                "question": question,
-                "error": str(e),
-                "recall_at_5": 0.0,
-                "faithfulness": 0.0,
-                "answer_relevancy": 0.0,
-                "chunks_retrieved": 0,
-                "source_files": [],
-                "intent": "unknown",
-            }
+    except Exception as e:
+        logger.error("question_failed", id=qid, error=str(e))
+        return {
+            "id": qid,
+            "question": question,
+            "error": str(e),
+            "recall_at_5": 0.0,
+            "faithfulness": 0.0,
+            "answer_relevancy": 0.0,
+            "chunks_retrieved": 0,
+            "source_files": [],
+            "intent": "unknown",
+        }
 
 
 # ─── Main benchmark runner ────────────────────────────────────────────────────
@@ -197,10 +194,14 @@ async def run_benchmark() -> dict:
 
     logger.info("benchmark_started", total_questions=n)
 
-    # Run all questions in parallel (semaphore limits to 3 concurrent)
-    tasks = [_evaluate_one(q, i, n) for i, q in enumerate(questions)]
-    per_question_results = await asyncio.gather(*tasks)
-    per_question_results = list(per_question_results)
+    # Run questions sequentially with delay to respect Groq 30 RPM limit
+    per_question_results = []
+    for i, q in enumerate(questions):
+        result = await _evaluate_one(q, i, n)
+        per_question_results.append(result)
+        if i < n - 1:
+            logger.info("benchmark_cooldown", seconds=_DELAY_BETWEEN_QUESTIONS)
+            await asyncio.sleep(_DELAY_BETWEEN_QUESTIONS)
 
     # Aggregate metrics
     recall_scores      = [r["recall_at_5"]      for r in per_question_results]
