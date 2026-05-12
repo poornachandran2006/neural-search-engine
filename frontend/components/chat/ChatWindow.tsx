@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useStream } from "@/hooks/useStream";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
@@ -15,6 +15,32 @@ interface Props {
   history?: Array<{ role: string; content: string }>;
   suggestions?: string[];
   onFeedback?: (messageId: string, rating: 1 | -1) => void;
+}
+
+function CopyTraceButton({ traceId }: { traceId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(traceId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Click to copy trace ID"
+      className="font-mono text-xs rounded-sm px-2 py-px shrink-0 transition-all duration-200"
+      style={{
+        color: copied ? "var(--accent-green)" : "var(--text-muted)",
+        background: copied ? "rgba(0,255,157,0.08)" : "var(--bg-elevated)",
+        border: copied ? "1px solid rgba(0,255,157,0.20)" : "1px solid var(--border-subtle)",
+        cursor: "pointer",
+      }}
+    >
+      {copied ? "✓ copied" : `#${traceId}`}
+    </button>
+  );
 }
 
 export function ChatWindow({
@@ -121,6 +147,9 @@ export function ChatWindow({
           <span className="font-mono text-xs truncate flex-1" style={{ color: "var(--text-muted)" }}>
             → {state.meta.rewritten_query}
           </span>
+          {state.meta.trace_id && (
+            <CopyTraceButton traceId={state.meta.trace_id} />
+          )}
         </div>
       )}
 

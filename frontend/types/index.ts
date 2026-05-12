@@ -34,6 +34,7 @@ export interface StreamMeta {
   chat_id?: string;
   cached?: boolean;
   answer_confidence?: "high" | "medium" | "low";
+  trace_id?: string;
 }
 
 export interface PipelineStatus {

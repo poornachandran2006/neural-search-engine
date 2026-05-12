@@ -119,6 +119,7 @@ async def query_stream(
         is_multi_doc = pipeline_result["is_multi_doc"]
         normalized = pipeline_result["normalized_query"]
         rewritten = pipeline_result["rewritten_query"]
+        trace_id = pipeline_result["trace_id"]
 
         sources = [
             {
@@ -137,7 +138,7 @@ async def query_stream(
 
         if cached:
             logger.info("serving_from_cache", key=cache_key[:20])
-            yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True, 'chat_id': chat_id, 'answer_confidence': compute_confidence(chunks)})}\n\n"
+            yield f"data: [META]{json.dumps({'intent': intent, 'rewritten_query': rewritten, 'is_multi_doc': is_multi_doc, 'source_files': pipeline_result['source_files'], 'cached': True, 'chat_id': chat_id, 'answer_confidence': compute_confidence(chunks), 'trace_id': trace_id})}\n\n"
             # Send cached answer token by token split by sentences to avoid SSE frame breaks
             safe_answer = cached["answer"].replace("\n", " ")
             yield f"data: {safe_answer}\n\n"
@@ -179,6 +180,7 @@ async def query_stream(
             "source_files": pipeline_result["source_files"],
             "chat_id": chat_id,
             "answer_confidence": answer_confidence,
+            "trace_id": trace_id,
         }
         yield f"data: [META]{json.dumps(meta)}\n\n"
 
