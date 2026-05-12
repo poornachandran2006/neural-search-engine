@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        env:
+          GROQ_API_KEY: "test-key-not-used-in-unit-tests"
+          GEMINI_API_KEY: "test-key-not-used-in-unit-tests"
+          QDRANT_URL: "http://localhost:6333"
+          DATABASE_URL: "postgresql+asyncpg://neural:neural@localhost:5432/neural_search"
+          REDIS_URL: "redis://localhost:6379"
+          CHUNKING_STRATEGY: "recursive"
+        run: |
+          pip install pytest pytest-asyncio
+          pytest tests/unit/ -v --tb=short
