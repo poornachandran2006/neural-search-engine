@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # Chunking
     chunk_size: int = 512
     chunk_overlap: int = 64
+    chunking_strategy: str = "recursive"  # "recursive" or "semantic"
+    semantic_breakpoint_threshold: float = 0.75  # cosine similarity below this = new chunk
 
     # Retrieval
     retrieval_score_threshold: float = 0.65
